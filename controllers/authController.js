@@ -33,6 +33,7 @@ const sanitizeUser = (user) => ({
     studentType: user.studentType,
     courseName: user.courseName,
     role: user.role,
+    isApproved: user.isApproved,
 });
 
 // ── controllers ───────────────────────────────────────────────────────────────
@@ -89,6 +90,13 @@ exports.login = async (req, res, next) => {
         const isMatch = await user.matchPassword(password);
         if (!isMatch)
             return res.status(401).json({ success: false, message: "Invalid credentials" });
+
+        // Block unapproved students (admins can always log in)
+        if (user.role === "student" && !user.isApproved)
+            return res.status(403).json({
+                success: false,
+                message: "Your account is pending admin approval. Please wait for approval before logging in.",
+            });
 
         // Store FCM token
         if (fcmToken) { user.fcmToken = fcmToken; await user.save(); }
@@ -179,12 +187,88 @@ exports.loginWithOTP = async (req, res, next) => {
         if (fcmToken) user.fcmToken = fcmToken;
         await user.save();
 
+        // Block unapproved students
+        if (user.role === "student" && !user.isApproved)
+            return res.status(403).json({
+                success: false,
+                message: "Your account is pending admin approval. Please wait for approval before logging in.",
+            });
+
         res.json({
             success: true,
             message: "OTP login successful",
             token: generateToken(user),
             data: sanitizeUser(user),
         });
+    } catch (err) {
+        next(err);
+    }
+};
+
+// ── Admin Controllers ─────────────────────────────────────────────────────────
+
+/**
+ * GET /api/admin/students/pending
+ * Returns all students awaiting approval.
+ */
+exports.listPendingStudents = async (req, res, next) => {
+    try {
+        const students = await User.find({ role: "student", isApproved: false })
+            .select("-password -otp -otpExpiry -fcmToken")
+            .sort({ createdAt: -1 });
+        res.json({ success: true, count: students.length, data: students });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * GET /api/admin/students
+ * Returns all students (approved + pending).
+ */
+exports.listAllStudents = async (req, res, next) => {
+    try {
+        const students = await User.find({ role: "student" })
+            .select("-password -otp -otpExpiry -fcmToken")
+            .sort({ createdAt: -1 });
+        res.json({ success: true, count: students.length, data: students });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * PATCH /api/admin/students/:id/approve
+ * Approves a student account.
+ */
+exports.approveStudent = async (req, res, next) => {
+    try {
+        const student = await User.findById(req.params.id);
+        if (!student || student.role !== "student")
+            return res.status(404).json({ success: false, message: "Student not found" });
+
+        student.isApproved = true;
+        await student.save();
+
+        res.json({ success: true, message: "Student account approved", data: sanitizeUser(student) });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * PATCH /api/admin/students/:id/reject
+ * Rejects (and deletes) a student account.
+ */
+exports.rejectStudent = async (req, res, next) => {
+    try {
+        const student = await User.findById(req.params.id);
+        if (!student || student.role !== "student")
+            return res.status(404).json({ success: false, message: "Student not found" });
+
+        await student.deleteOne();
+
+        res.json({ success: true, message: "Student account rejected and removed" });
     } catch (err) {
         next(err);
     }

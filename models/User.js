@@ -13,6 +13,7 @@ const userSchema = new mongoose.Schema(
         otp: { type: String },
         otpExpiry: { type: Date },
         role: { type: String, default: "student" },
+        isApproved: { type: Boolean, default: false },
     },
     { timestamps: true }
 );

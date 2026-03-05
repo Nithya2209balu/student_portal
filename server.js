@@ -23,6 +23,7 @@ app.use("/api/enrollments", require("./routes/enrollments"));
 app.use("/api/leaderboard", require("./routes/leaderboard"));
 app.use("/api/courses", require("./routes/courses"));
 app.use("/api/attendance", require("./routes/attendance"));
+app.use("/api/admin", require("./routes/admin"));
 
 // ── Health Check ──────────────────────────────────────────────────────────────
 app.get("/", (req, res) => {
