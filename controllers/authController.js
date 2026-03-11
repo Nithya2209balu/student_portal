@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 const User = require("../models/User");
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -13,12 +13,9 @@ const generateOTP = () =>
     Math.floor(100000 + Math.random() * 900000).toString();
 
 const sendOTPEmail = async (email, otp) => {
-    const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-    });
-    await transporter.sendMail({
-        from: `"Student Portal" <${process.env.EMAIL_USER}>`,
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    await resend.emails.send({
+        from: "Student Portal <onboarding@resend.dev>",
         to: email,
         subject: "Your OTP – Student Portal",
         html: `<p>Your OTP is <strong>${otp}</strong>. It expires in 10 minutes.</p>`,
