@@ -10,7 +10,7 @@ const generateToken = (user) =>
     });
 
 const generateOTP = () =>
-    Math.floor(100000 + Math.random() * 900000).toString();
+    Math.floor(1000 + Math.random() * 9000).toString();
 
 const sendOTPEmail = async (email, otp) => {
     const transporter = nodemailer.createTransport({
