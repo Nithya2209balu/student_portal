@@ -14,12 +14,18 @@ const generateOTP = () =>
 
 const sendOTPEmail = async (email, otp) => {
     const resend = new Resend(process.env.RESEND_API_KEY);
-    await resend.emails.send({
-        from: "Student Portal <onboarding@resend.dev>",
+    const fromAddress = process.env.RESEND_FROM_EMAIL || "Student Portal <onboarding@resend.dev>";
+    const { data, error } = await resend.emails.send({
+        from: fromAddress,
         to: email,
         subject: "Your OTP – Student Portal",
         html: `<p>Your OTP is <strong>${otp}</strong>. It expires in 10 minutes.</p>`,
     });
+    if (error) {
+        console.error("Resend email error:", error);
+        throw new Error(error.message || "Failed to send OTP email");
+    }
+    console.log("OTP email sent, id:", data?.id);
 };
 
 const sanitizeUser = (user) => ({
