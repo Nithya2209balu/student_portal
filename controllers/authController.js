@@ -180,25 +180,22 @@ exports.verifyOTP = async (req, res, next) => {
 
 /**
  * POST /api/auth/reset-password
- * Body: { email, resetToken, newPassword }
+ * Body: { email, newPassword }
  */
 exports.resetPassword = async (req, res, next) => {
     try {
-        const { email, resetToken, newPassword } = req.body;
-        if (!email || !resetToken || !newPassword)
-            return res.status(400).json({ success: false, message: "Email, reset token, and new password are required" });
+        const { email, newPassword } = req.body;
+        if (!email || !newPassword)
+            return res.status(400).json({ success: false, message: "Email and new password are required" });
 
-        const user = await User.findOne({ 
-            email: email.toLowerCase(),
-            resetToken,
-            resetTokenExpiry: { $gt: new Date() }
-        });
+        const user = await User.findOne({ email: email.toLowerCase() });
 
         if (!user)
-            return res.status(400).json({ success: false, message: "Invalid or expired reset token" });
+            return res.status(404).json({ success: false, message: "User not found" });
 
         // Update password (hashing happens automatically via mongoose pre-save hook)
         user.password = newPassword;
+        // Also clear resetToken just in case one was left behind
         user.resetToken = undefined;
         user.resetTokenExpiry = undefined;
         await user.save();
