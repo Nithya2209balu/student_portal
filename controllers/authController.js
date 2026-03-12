@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const nodemailer = require("nodemailer");
+const Brevo = require("@getbrevo/brevo");
 const User = require("../models/User");
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -13,18 +13,20 @@ const generateOTP = () =>
     Math.floor(1000 + Math.random() * 9000).toString();
 
 const sendOTPEmail = async (email, otp) => {
-    const transporter = nodemailer.createTransport({
-        host: "smtp.gmail.com",
-        port: 465,
-        secure: true,
-        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-    });
-    await transporter.sendMail({
-        from: `"Student Portal" <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: "Your OTP – Student Portal",
-        html: `<p>Your OTP is <strong>${otp}</strong>. It expires in 10 minutes.</p>`,
-    });
+    const apiInstance = new Brevo.TransactionalEmailsApi();
+    apiInstance.authentications["apiKey"].apiKey = process.env.BREVO_API_KEY;
+
+    const sendSmtpEmail = new Brevo.SendSmtpEmail();
+    sendSmtpEmail.sender = {
+        name: "Student Portal",
+        email: process.env.BREVO_FROM_EMAIL,
+    };
+    sendSmtpEmail.to = [{ email }];
+    sendSmtpEmail.subject = "Your OTP – Student Portal";
+    sendSmtpEmail.htmlContent = `<p>Your OTP is <strong>${otp}</strong>. It expires in 10 minutes.</p>`;
+
+    const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    console.log("OTP email sent, messageId:", result.body?.messageId);
 };
 
 const sanitizeUser = (user) => ({
