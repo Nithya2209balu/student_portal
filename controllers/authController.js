@@ -1,5 +1,4 @@
 const jwt = require("jsonwebtoken");
-const Brevo = require("@getbrevo/brevo");
 const User = require("../models/User");
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -13,20 +12,29 @@ const generateOTP = () =>
     Math.floor(1000 + Math.random() * 9000).toString();
 
 const sendOTPEmail = async (email, otp) => {
-    const apiInstance = new Brevo.TransactionalEmailsApi();
-    apiInstance.authentications["apiKey"].apiKey = process.env.BREVO_API_KEY;
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+            "api-key": process.env.BREVO_API_KEY,
+            "content-type": "application/json",
+            "accept": "application/json"
+        },
+        body: JSON.stringify({
+            sender: { name: "Student Portal", email: process.env.BREVO_FROM_EMAIL },
+            to: [{ email }],
+            subject: "Your OTP – Student Portal",
+            htmlContent: `<p>Your OTP is <strong>${otp}</strong>. It expires in 10 minutes.</p>`
+        })
+    });
 
-    const sendSmtpEmail = new Brevo.SendSmtpEmail();
-    sendSmtpEmail.sender = {
-        name: "Student Portal",
-        email: process.env.BREVO_FROM_EMAIL,
-    };
-    sendSmtpEmail.to = [{ email }];
-    sendSmtpEmail.subject = "Your OTP – Student Portal";
-    sendSmtpEmail.htmlContent = `<p>Your OTP is <strong>${otp}</strong>. It expires in 10 minutes.</p>`;
+    if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Brevo email error:", errorData);
+        throw new Error(errorData.message || "Failed to send OTP email");
+    }
 
-    const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
-    console.log("OTP email sent, messageId:", result.body?.messageId);
+    const data = await response.json();
+    console.log("OTP email sent, messageId:", data.messageId);
 };
 
 const sanitizeUser = (user) => ({
