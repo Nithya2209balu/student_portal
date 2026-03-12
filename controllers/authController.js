@@ -163,12 +163,47 @@ exports.verifyOTP = async (req, res, next) => {
         if (!user || user.otp !== otp || new Date() > user.otpExpiry)
             return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
 
-        // Clear OTP after verification
+        const resetToken = require("crypto").randomBytes(32).toString("hex");
+
+        // Clear OTP after verification and set reset flow token
         user.otp = undefined;
         user.otpExpiry = undefined;
+        user.resetToken = resetToken;
+        user.resetTokenExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
         await user.save();
 
-        res.json({ success: true, message: "OTP verified successfully" });
+        res.json({ success: true, message: "OTP verified successfully", resetToken });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * POST /api/auth/reset-password
+ * Body: { email, resetToken, newPassword }
+ */
+exports.resetPassword = async (req, res, next) => {
+    try {
+        const { email, resetToken, newPassword } = req.body;
+        if (!email || !resetToken || !newPassword)
+            return res.status(400).json({ success: false, message: "Email, reset token, and new password are required" });
+
+        const user = await User.findOne({ 
+            email: email.toLowerCase(),
+            resetToken,
+            resetTokenExpiry: { $gt: new Date() }
+        });
+
+        if (!user)
+            return res.status(400).json({ success: false, message: "Invalid or expired reset token" });
+
+        // Update password (hashing happens automatically via mongoose pre-save hook)
+        user.password = newPassword;
+        user.resetToken = undefined;
+        user.resetTokenExpiry = undefined;
+        await user.save();
+
+        res.json({ success: true, message: "Password reset successfully. You can now log in." });
     } catch (err) {
         next(err);
     }

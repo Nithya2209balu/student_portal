@@ -12,6 +12,8 @@ const userSchema = new mongoose.Schema(
         fcmToken: { type: String },
         otp: { type: String },
         otpExpiry: { type: Date },
+        resetToken: { type: String },
+        resetTokenExpiry: { type: Date },
         role: { type: String, default: "student" },
         isApproved: { type: Boolean, default: false },
     },
