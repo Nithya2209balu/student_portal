@@ -31,9 +31,9 @@ exports.getDashboardCounts = async (req, res, next) => {
         res.json({
             success: true,
             data: {
-                totalClasses,
-                avgAttendancePercent,
-                currentClassCount,
+                "total classes": totalClasses,
+                "Average attendance percentage": avgAttendancePercent,
+                "current class count": currentClassCount,
             },
         });
     } catch (err) {
