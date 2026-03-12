@@ -3,9 +3,9 @@ const User = require("../models/User");
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-const generateToken = (user) =>
+const generateToken = (user, rememberMe = false) =>
     jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, {
-        expiresIn: "30d",
+        expiresIn: rememberMe ? "30d" : "1d",
     });
 
 const generateOTP = () =>
@@ -88,7 +88,7 @@ exports.register = async (req, res, next) => {
  */
 exports.login = async (req, res, next) => {
     try {
-        const { identifier, password, fcmToken } = req.body;
+        const { identifier, password, fcmToken, rememberMe } = req.body;
         if (!identifier || !password)
             return res.status(400).json({ success: false, message: "Identifier and password are required" });
 
@@ -116,7 +116,7 @@ exports.login = async (req, res, next) => {
         res.json({
             success: true,
             message: "Login successful",
-            token: generateToken(user),
+            token: generateToken(user, rememberMe),
             data: sanitizeUser(user),
         });
     } catch (err) {
@@ -218,7 +218,7 @@ exports.resetPassword = async (req, res, next) => {
  */
 exports.loginWithOTP = async (req, res, next) => {
     try {
-        const { email, otp, fcmToken } = req.body;
+        const { email, otp, fcmToken, rememberMe } = req.body;
         if (!email || !otp)
             return res.status(400).json({ success: false, message: "Email and OTP are required" });
 
@@ -241,7 +241,7 @@ exports.loginWithOTP = async (req, res, next) => {
         res.json({
             success: true,
             message: "OTP login successful",
-            token: generateToken(user),
+            token: generateToken(user, rememberMe),
             data: sanitizeUser(user),
         });
     } catch (err) {
