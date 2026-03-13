@@ -320,15 +320,61 @@ exports.rejectStudent = async (req, res, next) => {
 
 /**
  * GET /api/admin/students/:id
- * Returns details of a specific student by ID.
+ * Get a single student's details by ID.
  */
 exports.getStudentById = async (req, res, next) => {
     try {
-        const student = await User.findById(req.params.id).select("-password -otp -otpExpiry -fcmToken");
+        const student = await User.findById(req.params.id).select("-password -otp -otpExpiry -resetToken -resetTokenExpiry -fcmToken");
         if (!student || student.role !== "student")
             return res.status(404).json({ success: false, message: "Student not found" });
 
         res.json({ success: true, data: student });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * PUT /api/admin/students/:id
+ * Update a student's details by ID.
+ */
+exports.updateStudentById = async (req, res, next) => {
+    try {
+        const { name, email, mobile, studentType, courseName, isApproved } = req.body;
+        
+        let student = await User.findById(req.params.id);
+        if (!student || student.role !== "student")
+            return res.status(404).json({ success: false, message: "Student not found" });
+
+        // Update fields if provided
+        if (name) student.name = name;
+        if (email) student.email = email.toLowerCase();
+        if (mobile) student.mobile = mobile;
+        if (studentType) student.studentType = studentType;
+        if (courseName && student.studentType === "offline") student.courseName = courseName;
+        if (typeof isApproved !== "undefined") student.isApproved = isApproved;
+
+        await student.save();
+
+        res.json({ success: true, message: "Student updated successfully", data: sanitizeUser(student) });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * DELETE /api/admin/students/:id
+ * Delete a student by ID.
+ */
+exports.deleteStudentById = async (req, res, next) => {
+    try {
+        const student = await User.findById(req.params.id);
+        if (!student || student.role !== "student")
+            return res.status(404).json({ success: false, message: "Student not found" });
+
+        await student.deleteOne();
+
+        res.json({ success: true, message: "Student deleted successfully" });
     } catch (err) {
         next(err);
     }
