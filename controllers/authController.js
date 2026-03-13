@@ -317,3 +317,19 @@ exports.rejectStudent = async (req, res, next) => {
         next(err);
     }
 };
+
+/**
+ * GET /api/admin/students/:id
+ * Returns details of a specific student by ID.
+ */
+exports.getStudentById = async (req, res, next) => {
+    try {
+        const student = await User.findById(req.params.id).select("-password -otp -otpExpiry -fcmToken");
+        if (!student || student.role !== "student")
+            return res.status(404).json({ success: false, message: "Student not found" });
+
+        res.json({ success: true, data: student });
+    } catch (err) {
+        next(err);
+    }
+};
