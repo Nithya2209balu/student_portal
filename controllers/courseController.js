@@ -15,6 +15,19 @@ exports.getCategories = async (req, res, next) => {
     } catch (err) { next(err); }
 };
 
+exports.createCategory = async (req, res, next) => {
+    try {
+        const { name, description, imageUrl } = req.body;
+        if (!name) return res.status(400).json({ success: false, message: "Category name is required" });
+
+        const existing = await CourseCategory.findOne({ name: { $regex: new RegExp(`^${name}$`, "i") } });
+        if (existing) return res.status(400).json({ success: false, message: "Category already exists" });
+
+        const category = await CourseCategory.create({ name, description, imageUrl });
+        res.status(201).json({ success: true, message: "Category created successfully", data: category });
+    } catch (err) { next(err); }
+};
+
 // ── Courses List ──────────────────────────────────────────────────────────────
 exports.getCourses = async (req, res, next) => {
     try {
