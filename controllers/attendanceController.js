@@ -86,3 +86,40 @@ exports.getAttendanceListById = async (req, res, next) => {
     }
 };
 
+/**
+ * POST /api/attendance/:userId
+ * Mark or update attendance for a specific student
+ * Body: { date (YYYY-MM-DD), status (present, absent, holiday), courseId (optional), remarks (optional) }
+ */
+exports.markAttendanceById = async (req, res, next) => {
+    try {
+        const { date, status, courseId, remarks } = req.body;
+        const userId = req.params.userId;
+
+        if (!date || !status) {
+            return res.status(400).json({ success: false, message: "Date and status are required" });
+        }
+
+        if (!["present", "absent", "holiday"].includes(status)) {
+            return res.status(400).json({ success: false, message: "Invalid status value. Must be present, absent, or holiday." });
+        }
+
+        // Set time to start of day for strict unique indexing
+        const recordDate = new Date(date);
+        recordDate.setUTCHours(0, 0, 0, 0);
+
+        const filter = { userId, date: recordDate };
+        if (courseId) filter.courseId = courseId; // only apply course constraint if provided
+
+        // Find existing record and update, or create a new one (upsert: true)
+        const record = await Attendance.findOneAndUpdate(
+            filter,
+            { status, remarks },
+            { new: true, upsert: true, setDefaultsOnInsert: true }
+        );
+
+        res.status(200).json({ success: true, message: "Attendance marked successfully", data: record });
+    } catch (err) {
+        next(err);
+    }
+};
