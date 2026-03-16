@@ -93,12 +93,15 @@ exports.getAttendanceListById = async (req, res, next) => {
  */
 exports.markAttendanceById = async (req, res, next) => {
     try {
-        const { date, status, courseId, remarks } = req.body;
+        const { date, courseId, remarks } = req.body;
+        let { status } = req.body;
         const userId = req.params.userId;
 
         if (!date || !status) {
             return res.status(400).json({ success: false, message: "Date and status are required" });
         }
+
+        status = status.toLowerCase();
 
         if (!["present", "absent", "holiday"].includes(status)) {
             return res.status(400).json({ success: false, message: "Invalid status value. Must be present, absent, or holiday." });
