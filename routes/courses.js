@@ -17,11 +17,12 @@ const {
     getCategoryNames,
 } = require("../controllers/courseController");
 const { protect, isAdmin } = require("../middlewares/auth");
+const upload = require("../middlewares/upload");
 
 // ── Category & Listing ──────────────────────────────────────────────────────
 router.get("/categories/names", protect, getCategoryNames);
 router.get("/categories", protect, getCategories);
-router.post("/categories", protect, isAdmin, createCategory);
+router.post("/categories", protect, isAdmin, upload.single("image"), createCategory);
 router.get("/", protect, getCourses);
 
 // ── Lesson-level (must come before /:id routes to avoid conflicts) ──────────

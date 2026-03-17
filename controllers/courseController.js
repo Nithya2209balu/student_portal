@@ -24,11 +24,20 @@ exports.getCategoryNames = async (req, res, next) => {
 
 exports.createCategory = async (req, res, next) => {
     try {
-        const { name, description, imageUrl, fees } = req.body;
+        const { name, description, fees } = req.body;
+        let { imageUrl } = req.body;
+
         if (!name) return res.status(400).json({ success: false, message: "Category name is required" });
 
         const existing = await CourseCategory.findOne({ name: { $regex: new RegExp(`^${name}$`, "i") } });
         if (existing) return res.status(400).json({ success: false, message: "Category already exists" });
+
+        // If file is uploaded, use its path as imageUrl
+        if (req.file) {
+            // Convert backslashes to forward slashes for URL and make relative
+            imageUrl = req.file.path.replace(/\\/g, "/").replace(/^.*uploads\//, "/uploads/");
+            // Add server protocol/host if desired, but relative is often safer for local/prod dev
+        }
 
         const category = await CourseCategory.create({ name, description, imageUrl, fees: fees || 0 });
         res.status(201).json({ success: true, message: "Category created successfully", data: category });
