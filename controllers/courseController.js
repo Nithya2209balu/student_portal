@@ -1,4 +1,3 @@
-const CourseCategory = require("../models/CourseCategory");
 const Course = require("../models/Course");
 const Lesson = require("../models/Lesson");
 const Enrollment = require("../models/Enrollment");
@@ -10,14 +9,14 @@ const QuizScore = require("../models/QuizScore");
 // ── Categories ────────────────────────────────────────────────────────────────
 exports.getCategories = async (req, res, next) => {
     try {
-        const categories = await CourseCategory.find().sort({ name: 1 });
+        const categories = await Course.find({ isCategory: true }).sort({ name: 1 });
         res.json({ success: true, data: categories });
     } catch (err) { next(err); }
 };
 
 exports.getCategoryNames = async (req, res, next) => {
     try {
-        const categories = await CourseCategory.find().sort({ name: 1 }).select("name");
+        const categories = await Course.find({ isCategory: true }).sort({ name: 1 }).select("name");
         res.json({ success: true, data: categories.map(cat => cat.name) });
     } catch (err) { next(err); }
 };
@@ -27,10 +26,19 @@ exports.createCategory = async (req, res, next) => {
         const { name, description, imageUrl, fees } = req.body;
         if (!name) return res.status(400).json({ success: false, message: "Category name is required" });
 
-        const existing = await CourseCategory.findOne({ name: { $regex: new RegExp(`^${name}$`, "i") } });
+        const existing = await Course.findOne({
+            isCategory: true,
+            name: { $regex: new RegExp(`^${name}$`, "i") }
+        });
         if (existing) return res.status(400).json({ success: false, message: "Category already exists" });
 
-        const category = await CourseCategory.create({ name, description, imageUrl, fees: fees || 0 });
+        const category = await Course.create({
+            isCategory: true,
+            name,
+            description,
+            imageUrl,
+            fees: fees || 0
+        });
         res.status(201).json({ success: true, message: "Category created successfully", data: category });
     } catch (err) { next(err); }
 };
@@ -38,13 +46,12 @@ exports.createCategory = async (req, res, next) => {
 // ── Courses List ──────────────────────────────────────────────────────────────
 exports.getCourses = async (req, res, next) => {
     try {
-        const { categoryId } = req.query;
-        const filter = { isActive: true };
-        if (categoryId) filter.categoryId = categoryId;
+        const { category } = req.query; // now expected as a string name
+        const filter = { isCategory: false, isActive: true };
+        if (category) filter.category = category;
 
         const courses = await Course.find(filter)
-            .populate("categoryId", "name")
-            .select("title imageUrl amount reviewsCount avgRating tutorName categoryId")
+            .select("title imageUrl amount reviewsCount avgRating tutorName category")
             .sort({ createdAt: -1 });
 
         res.json({ success: true, data: courses });
@@ -54,7 +61,7 @@ exports.getCourses = async (req, res, next) => {
 // ── Course About ──────────────────────────────────────────────────────────────
 exports.getCourseAbout = async (req, res, next) => {
     try {
-        const course = await Course.findById(req.params.id).populate("categoryId", "name");
+        const course = await Course.findOne({ _id: req.params.id, isCategory: false });
         if (!course) return res.status(404).json({ success: false, message: "Course not found" });
 
         res.json({
@@ -67,7 +74,7 @@ exports.getCourseAbout = async (req, res, next) => {
                 amount: course.amount,
                 reviewsCount: course.reviewsCount,
                 avgRating: course.avgRating,
-                category: course.categoryId,
+                category: course.category,
                 tutor: {
                     name: course.tutorName,
                     role: course.tutorRole,
