@@ -60,6 +60,35 @@ exports.getCourses = async (req, res, next) => {
     } catch (err) { next(err); }
 };
 
+exports.createCourse = async (req, res, next) => {
+    try {
+        const { title, description, amount, categoryId, tutorName, tutorRole, tutorImage } = req.body;
+        let { imageUrl } = req.body;
+
+        if (!title || !amount) {
+            return res.status(400).json({ success: false, message: "Title and amount are required" });
+        }
+
+        // If file is uploaded, use it as course image
+        if (req.file) {
+            imageUrl = req.file.path.replace(/\\/g, "/").replace(/^.*uploads\//, "/uploads/");
+        }
+
+        const course = await Course.create({
+            title,
+            description,
+            amount,
+            categoryId,
+            tutorName,
+            tutorRole,
+            tutorImage,
+            imageUrl
+        });
+
+        res.status(201).json({ success: true, message: "Course created successfully", data: course });
+    } catch (err) { next(err); }
+};
+
 // ── Course About ──────────────────────────────────────────────────────────────
 exports.getCourseAbout = async (req, res, next) => {
     try {

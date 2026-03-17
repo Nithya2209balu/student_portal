@@ -3,14 +3,25 @@ const path = require("path");
 const fs = require("fs");
 
 // Ensure upload directory exists
-const uploadDir = path.join(__dirname, "../uploads/categories");
+const uploadDir = path.join(__dirname, "../uploads");
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
 }
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, uploadDir);
+        // We can dynamically choose subfolder based on fieldname or route if we want
+        let dest = uploadDir;
+        if (file.fieldname === "image" && req.originalUrl.includes("categories")) {
+            dest = path.join(uploadDir, "categories");
+        } else if (req.originalUrl.includes("courses")) {
+            dest = path.join(uploadDir, "courses");
+        }
+
+        if (!fs.existsSync(dest)) {
+            fs.mkdirSync(dest, { recursive: true });
+        }
+        cb(null, dest);
     },
     filename: (req, file, cb) => {
         const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
