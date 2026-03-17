@@ -3,26 +3,24 @@ const Attendance = require("../models/Attendance");
 
 // Shared helper: compute dashboard stats for a given userId
 const computeDashboard = async (userId) => {
+    const totalClasses = await Enrollment.countDocuments({
+        userId,
+        paymentStatus: "paid",
+    });
+
     const attendanceRecords = await Attendance.find({ userId });
-    
-    // Total classes = sessions recorded (present, absent, or holiday)
-    const totalClasses = attendanceRecords.length;
-    
-    // Present count
     const presentCount = attendanceRecords.filter((r) => r.status === "present").length;
-    
-    // Total for percentage calculation (excluding holidays)
-    const workingDaysRecords = attendanceRecords.filter(
+    const totalRecords = attendanceRecords.filter(
         (r) => r.status === "present" || r.status === "absent"
     ).length;
 
     const avgAttendancePercent =
-        workingDaysRecords > 0 ? Math.round((presentCount / workingDaysRecords) * 100) : 0;
+        totalRecords > 0 ? Math.round((presentCount / totalRecords) * 100) : 0;
 
     return {
         "total classes": totalClasses,
         "Average attendance percentage": avgAttendancePercent,
-        "current class count": presentCount,
+        "current class count": totalClasses,
     };
 };
 
