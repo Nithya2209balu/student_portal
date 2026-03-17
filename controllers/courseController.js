@@ -15,6 +15,13 @@ exports.getCategories = async (req, res, next) => {
     } catch (err) { next(err); }
 };
 
+exports.getCategoryNames = async (req, res, next) => {
+    try {
+        const categories = await CourseCategory.find().sort({ name: 1 }).select("name");
+        res.json({ success: true, data: categories.map(cat => cat.name) });
+    } catch (err) { next(err); }
+};
+
 exports.createCategory = async (req, res, next) => {
     try {
         const { name, description, imageUrl, fees } = req.body;
@@ -37,6 +44,7 @@ exports.getCourses = async (req, res, next) => {
 
         const courses = await Course.find(filter)
             .populate("categoryId", "name")
+            .select("title imageUrl amount reviewsCount avgRating tutorName categoryId")
             .sort({ createdAt: -1 });
 
         res.json({ success: true, data: courses });
