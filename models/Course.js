@@ -2,17 +2,11 @@ const mongoose = require("mongoose");
 
 const courseSchema = new mongoose.Schema(
     {
-        // For Categories:
-        isCategory: { type: Boolean, default: false },
-        name: { type: String, trim: true }, // Used for Category name
-        fees: { type: Number, default: 0 }, // Used for Category fees
-
-        // For Courses:
-        title: { type: String, trim: true },
+        name: { type: String, required: true, trim: true },
         description: { type: String },
         imageUrl: { type: String },
-        amount: { type: Number, default: 0 },
-        category: { type: String }, // Links to Category name (string)
+        fees: { type: Number, required: true, default: 0 },
+        category: { type: String, required: true },
         tutorName: { type: String },
         tutorRole: { type: String },
         tutorImage: { type: String },

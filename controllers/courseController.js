@@ -9,49 +9,44 @@ const QuizScore = require("../models/QuizScore");
 // ── Categories ────────────────────────────────────────────────────────────────
 exports.getCategories = async (req, res, next) => {
     try {
-        const categories = await Course.find({ isCategory: true }).sort({ name: 1 });
+        const categories = await Course.distinct("category");
         res.json({ success: true, data: categories });
     } catch (err) { next(err); }
 };
 
 exports.getCategoryNames = async (req, res, next) => {
     try {
-        const categories = await Course.find({ isCategory: true }).sort({ name: 1 }).select("name");
-        res.json({ success: true, data: categories.map(cat => cat.name) });
+        const categories = await Course.distinct("category");
+        res.json({ success: true, data: categories });
     } catch (err) { next(err); }
 };
 
 exports.createCategory = async (req, res, next) => {
     try {
-        const { name, description, imageUrl, fees } = req.body;
-        if (!name) return res.status(400).json({ success: false, message: "Category name is required" });
+        const { name, description, imageUrl, fees, category } = req.body;
+        if (!name || !category) return res.status(400).json({ success: false, message: "Name and Category are required" });
 
-        const existing = await Course.findOne({
-            isCategory: true,
-            name: { $regex: new RegExp(`^${name}$`, "i") }
+        const course = await Course.create({ 
+            name, 
+            description, 
+            imageUrl, 
+            fees: fees || 0, 
+            category 
         });
-        if (existing) return res.status(400).json({ success: false, message: "Category already exists" });
 
-        const category = await Course.create({
-            isCategory: true,
-            name,
-            description,
-            imageUrl,
-            fees: fees || 0
-        });
-        res.status(201).json({ success: true, message: "Category created successfully", data: category });
+        res.status(201).json({ success: true, message: "Course created successfully", data: course });
     } catch (err) { next(err); }
 };
 
 // ── Courses List ──────────────────────────────────────────────────────────────
 exports.getCourses = async (req, res, next) => {
     try {
-        const { category } = req.query; // now expected as a string name
-        const filter = { isCategory: false, isActive: true };
+        const { category } = req.query;
+        const filter = { isActive: true };
         if (category) filter.category = category;
 
         const courses = await Course.find(filter)
-            .select("title imageUrl amount reviewsCount avgRating tutorName category")
+            .select("name imageUrl fees reviewsCount avgRating tutorName category")
             .sort({ createdAt: -1 });
 
         res.json({ success: true, data: courses });
@@ -61,17 +56,17 @@ exports.getCourses = async (req, res, next) => {
 // ── Course About ──────────────────────────────────────────────────────────────
 exports.getCourseAbout = async (req, res, next) => {
     try {
-        const course = await Course.findOne({ _id: req.params.id, isCategory: false });
+        const course = await Course.findById(req.params.id);
         if (!course) return res.status(404).json({ success: false, message: "Course not found" });
 
         res.json({
             success: true,
             data: {
                 _id: course._id,
-                title: course.title,
+                name: course.name,
                 description: course.description,
                 imageUrl: course.imageUrl,
-                amount: course.amount,
+                fees: course.fees,
                 reviewsCount: course.reviewsCount,
                 avgRating: course.avgRating,
                 category: course.category,
