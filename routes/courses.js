@@ -15,17 +15,14 @@ const {
     getLessonQuizScores,
     createCategory,
     getCategoryNames,
-    createCourse,
 } = require("../controllers/courseController");
 const { protect, isAdmin } = require("../middlewares/auth");
-const upload = require("../middlewares/upload");
 
 // ── Category & Listing ──────────────────────────────────────────────────────
 router.get("/categories/names", protect, getCategoryNames);
 router.get("/categories", protect, getCategories);
-router.post("/categories", protect, isAdmin, upload.single("image"), createCategory);
+router.post("/categories", protect, isAdmin, createCategory);
 router.get("/", protect, getCourses);
-router.post("/", protect, isAdmin, upload.single("image"), createCourse);
 
 // ── Lesson-level (must come before /:id routes to avoid conflicts) ──────────
 router.get("/lessons/:lessonId/mcq", protect, getLessonMCQ);
