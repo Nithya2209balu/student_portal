@@ -20,7 +20,8 @@ const { protect, isAdmin } = require("../middlewares/auth");
 // ── Category & Listing ──────────────────────────────────────────────────────
 router.get("/categories", protect, getCategories);
 router.post("/categories", protect, isAdmin, createCategory);
-router.get("/", protect, getCourses);
+router.get("/list", protect, getCourses); // Original course listing moved here
+router.get("/", protect, getCategories);   // Root now returns categories as requested
 
 // ── Lesson-level (must come before /:id routes to avoid conflicts) ──────────
 router.get("/lessons/:lessonId/mcq", protect, getLessonMCQ);
