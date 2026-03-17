@@ -10,8 +10,14 @@ const QuizScore = require("../models/QuizScore");
 // ── Categories ────────────────────────────────────────────────────────────────
 exports.getCategories = async (req, res, next) => {
     try {
-        const categories = await CourseCategory.find().sort({ name: 1 });
-        res.json({ success: true, data: categories });
+        // Get all unique category IDs from active courses
+        const categoryIds = await Course.distinct("categoryId", { isActive: true });
+        
+        // Find names for these categories and return as a simple list of strings
+        const categories = await CourseCategory.find({ _id: { $in: categoryIds } })
+            .distinct("name");
+        
+        res.json({ success: true, data: categories.sort() });
     } catch (err) { next(err); }
 };
 
