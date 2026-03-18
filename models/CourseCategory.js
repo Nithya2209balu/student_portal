@@ -6,6 +6,7 @@ const courseCategorySchema = new mongoose.Schema(
         description: { type: String },
         imageUrl: { type: String },
         fees: { type: Number, default: 0 },
+        categoryIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "CourseCategory" }],
     },
     { timestamps: true }
 );

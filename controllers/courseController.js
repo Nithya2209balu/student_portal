@@ -10,7 +10,9 @@ const QuizScore = require("../models/QuizScore");
 // ── Categories ────────────────────────────────────────────────────────────────
 exports.getCategories = async (req, res, next) => {
     try {
-        const categories = await CourseCategory.find().sort({ name: 1 });
+        const categories = await CourseCategory.find()
+            .sort({ name: 1 })
+            .populate("categoryIds", "_id name");
         res.json({ success: true, data: categories });
     } catch (err) { next(err); }
 };
@@ -24,14 +26,30 @@ exports.getCategoryNames = async (req, res, next) => {
 
 exports.createCategory = async (req, res, next) => {
     try {
-        const { name, description, imageUrl, fees } = req.body;
+        const { name, description, imageUrl, fees, categoryIds } = req.body;
         if (!name) return res.status(400).json({ success: false, message: "Category name is required" });
 
         const existing = await CourseCategory.findOne({ name: { $regex: new RegExp(`^${name}$`, "i") } });
         if (existing) return res.status(400).json({ success: false, message: "Category already exists" });
 
-        const category = await CourseCategory.create({ name, description, imageUrl, fees: fees || 0 });
-        res.status(201).json({ success: true, message: "Category created successfully", data: category });
+        // Validate that provided categoryIds actually exist
+        if (categoryIds && categoryIds.length > 0) {
+            const count = await CourseCategory.countDocuments({ _id: { $in: categoryIds } });
+            if (count !== categoryIds.length) {
+                return res.status(400).json({ success: false, message: "One or more categoryIds are invalid" });
+            }
+        }
+
+        const category = await CourseCategory.create({
+            name,
+            description,
+            imageUrl,
+            fees: fees || 0,
+            categoryIds: categoryIds || [],
+        });
+
+        const populated = await category.populate("categoryIds", "_id name");
+        res.status(201).json({ success: true, message: "Category created successfully", data: populated });
     } catch (err) { next(err); }
 };
 
