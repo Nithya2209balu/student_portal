@@ -14,12 +14,12 @@ const {
     submitQuiz,
     getLessonQuizScores,
     createCategory,
-    getCategoryNames,
+    postCategoryNames,
 } = require("../controllers/courseController");
 const { protect, isAdmin } = require("../middlewares/auth");
 
 // ── Category & Listing ──────────────────────────────────────────────────────
-router.get("/categories/names", protect, getCategoryNames);
+router.post("/categories/names", protect, postCategoryNames);
 router.get("/categories", protect, getCategories);
 router.post("/categories", protect, isAdmin, createCategory);
 router.get("/", protect, getCourses);

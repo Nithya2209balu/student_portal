@@ -8,47 +8,61 @@ const MCQ = require("../models/MCQ");
 const QuizScore = require("../models/QuizScore");
 
 // ── Categories ────────────────────────────────────────────────────────────────
+
+// Map of fixed numeric IDs to category names
+const CATEGORY_CODE_MAP = { 1001: "AI", 1002: "Web Development" };
+
 exports.getCategories = async (req, res, next) => {
     try {
         const categories = await CourseCategory.find()
             .sort({ name: 1 })
-            .populate("categoryIds", "_id name");
+            .populate("parentCategoryId", "_id name categoryCode");
         res.json({ success: true, data: categories });
     } catch (err) { next(err); }
 };
 
-exports.getCategoryNames = async (req, res, next) => {
+/**
+ * POST /api/courses/categories/names
+ * Returns the list of base category names (no body needed)
+ */
+exports.postCategoryNames = async (req, res, next) => {
     try {
-        const categories = await CourseCategory.find().sort({ name: 1 }).select("name");
-        res.json({ success: true, data: categories.map(cat => cat.name) });
+        const categories = await CourseCategory.find(
+            { categoryCode: { $in: [1001, 1002] } },
+            "name categoryCode"
+        ).sort({ categoryCode: 1 });
+        res.json({ success: true, data: categories.map(c => c.name) });
     } catch (err) { next(err); }
 };
 
 exports.createCategory = async (req, res, next) => {
     try {
-        const { name, description, imageUrl, fees, categoryIds } = req.body;
+        const { name, description, imageUrl, fees, categoryId } = req.body;
         if (!name) return res.status(400).json({ success: false, message: "Category name is required" });
+        if (!categoryId) return res.status(400).json({ success: false, message: "categoryId is required (1001 for AI, 1002 for Web Development)" });
 
+        const numericId = Number(categoryId);
+        if (![1001, 1002].includes(numericId)) {
+            return res.status(400).json({ success: false, message: "Invalid categoryId. Use 1001 for AI or 1002 for Web Development" });
+        }
+
+        // Check duplicate category name
         const existing = await CourseCategory.findOne({ name: { $regex: new RegExp(`^${name}$`, "i") } });
         if (existing) return res.status(400).json({ success: false, message: "Category already exists" });
 
-        // Validate that provided categoryIds actually exist
-        if (categoryIds && categoryIds.length > 0) {
-            const count = await CourseCategory.countDocuments({ _id: { $in: categoryIds } });
-            if (count !== categoryIds.length) {
-                return res.status(400).json({ success: false, message: "One or more categoryIds are invalid" });
-            }
-        }
+        // Find the parent category doc by its fixed code
+        const parent = await CourseCategory.findOne({ categoryCode: numericId });
+        if (!parent) return res.status(400).json({ success: false, message: `Parent category (${CATEGORY_CODE_MAP[numericId]}) not found in DB` });
 
         const category = await CourseCategory.create({
             name,
             description,
             imageUrl,
             fees: fees || 0,
-            categoryIds: categoryIds || [],
+            parentCategoryId: parent._id,
         });
 
-        const populated = await category.populate("categoryIds", "_id name");
+        const populated = await category.populate("parentCategoryId", "_id name categoryCode");
         res.status(201).json({ success: true, message: "Category created successfully", data: populated });
     } catch (err) { next(err); }
 };
