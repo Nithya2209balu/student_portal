@@ -19,7 +19,7 @@ const {
 const { protect, isAdmin } = require("../middlewares/auth");
 
 // ── Category & Listing ──────────────────────────────────────────────────────
-router.post("/categories/names", protect, postCategoryNames);
+router.get("/categories/names", protect, postCategoryNames);
 router.get("/categories", protect, getCategories);
 router.post("/categories", protect, isAdmin, createCategory);
 router.get("/", protect, getCourses);
