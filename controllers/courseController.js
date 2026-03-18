@@ -12,12 +12,24 @@ const QuizScore = require("../models/QuizScore");
 // Map of fixed numeric IDs to category names
 const CATEGORY_CODE_MAP = { 1001: "AI", 1002: "Web Development" };
 
+// Helper to flatten the category response
+const formatCategoryResponse = (cat) => ({
+    _id: cat._id,
+    name: cat.name,
+    description: cat.description,
+    imageUrl: cat.imageUrl,
+    fees: cat.fees,
+    categoryCode: cat.categoryCode || (cat.parentCategoryId ? cat.parentCategoryId.categoryCode : null)
+});
+
 exports.getCategories = async (req, res, next) => {
     try {
         const categories = await CourseCategory.find()
             .sort({ name: 1 })
-            .populate("parentCategoryId", "_id name categoryCode");
-        res.json({ success: true, data: categories });
+            .populate("parentCategoryId", "categoryCode");
+            
+        const simplified = categories.map(formatCategoryResponse);
+        res.json({ success: true, data: simplified });
     } catch (err) { next(err); }
 };
 
@@ -62,8 +74,12 @@ exports.createCategory = async (req, res, next) => {
             parentCategoryId: parent._id,
         });
 
-        const populated = await category.populate("parentCategoryId", "_id name categoryCode");
-        res.status(201).json({ success: true, message: "Category created successfully", data: populated });
+        const populated = await category.populate("parentCategoryId", "categoryCode");
+        res.status(201).json({ 
+            success: true, 
+            message: "Category created successfully", 
+            data: formatCategoryResponse(populated) 
+        });
     } catch (err) { next(err); }
 };
 
