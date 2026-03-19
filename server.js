@@ -28,7 +28,7 @@ app.use("/api/upload", require("./routes/upload"));
 
 // ── Health Check ──────────────────────────────────────────────────────────────
 app.get("/", (req, res) => {
-    res.json({ success: true, message: "Student Portal API is running 🚀" });
+    res.json({ success: true, message: "Student Portal API is running - Version 1.0.1 🚀" });
 });
 
 // ── 404 ───────────────────────────────────────────────────────────────────────
