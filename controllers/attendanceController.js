@@ -2,6 +2,31 @@ const Attendance = require("../models/Attendance");
 
 // ── Shared helpers ─────────────────────────────────────────────────────────
 
+
+const User = require("../models/User");
+
+const generateOTP = () => Math.floor(1000 + Math.random() * 9000).toString();
+const sendOTPEmail = async (email, otp) => {
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+            "api-key": process.env.BREVO_API_KEY,
+            "content-type": "application/json",
+            "accept": "application/json"
+        },
+        body: JSON.stringify({
+            sender: { name: "HR System", email: process.env.BREVO_FROM_EMAIL },
+            to: [{ email }],
+            subject: "Attendance Edit Verification OTP",
+            htmlContent: `<p>An HR admin is trying to edit an attendance record.</p><p>Your verification OTP is <strong>${otp}</strong>.</p><p>It expires in 10 minutes.</p>`
+        })
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || "Failed to send OTP email");
+    }
+};
+
 const computeSummary = async (userId) => {
     const records = await Attendance.find({ userId });
     const presentCount = records.filter((r) => r.status === "present").length;
@@ -140,4 +165,78 @@ exports.markAttendanceById = async (req, res, next) => {
     } catch (err) {
         next(err);
     }
+};
+
+/**
+ * POST /api/attendance/:userId/request-edit
+ */
+exports.requestAttendanceEditById = async (req, res, next) => {
+    try {
+        const { date, courseId } = req.body;
+        if (!date) return res.status(400).json({ success: false, message: "Date is required" });
+
+        const inputDate = new Date(date);
+        const today = new Date();
+        const inputUTC = Date.UTC(inputDate.getUTCFullYear(), inputDate.getUTCMonth(), inputDate.getUTCDate());
+        const todayUTC = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+
+        if (inputUTC !== todayUTC) {
+            return res.status(400).json({ success: false, message: "Attendance can only be edited for today's date." });
+        }
+
+        const recordDate = new Date(inputUTC);
+        const filter = { userId: req.params.userId, date: recordDate };
+        if (courseId) filter.courseId = courseId;
+        
+        const existing = await Attendance.findOne(filter);
+        if (!existing) {
+            return res.status(400).json({ success: false, message: "No attendance found for today to edit. Just use the standard mark API." });
+        }
+
+        const otp = generateOTP();
+        await User.findByIdAndUpdate(req.user.id, {
+            otp,
+            otpExpiry: Date.now() + 10 * 60 * 1000
+        });
+
+        await sendOTPEmail("hr@by8labs.com", otp);
+
+        res.json({ success: true, message: "Verification OTP sent to hr@by8labs.com" });
+    } catch (err) { next(err); }
+};
+
+/**
+ * PUT /api/attendance/:userId/verify-edit
+ */
+exports.verifyAttendanceEditById = async (req, res, next) => {
+    try {
+        const { otp, date, courseId, status, remarks } = req.body;
+        if (!otp || !date || !status) return res.status(400).json({ success: false, message: "OTP, date, and new status are required" });
+
+        const adminUser = await User.findById(req.user.id);
+        if (!adminUser.otp || adminUser.otp !== otp || adminUser.otpExpiry < Date.now()) {
+            return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+        }
+
+        adminUser.otp = undefined;
+        adminUser.otpExpiry = undefined;
+        await adminUser.save();
+
+        const inputDate = new Date(date);
+        const inputUTC = Date.UTC(inputDate.getUTCFullYear(), inputDate.getUTCMonth(), inputDate.getUTCDate());
+        const recordDate = new Date(inputUTC);
+
+        const filter = { userId: req.params.userId, date: recordDate };
+        if (courseId) filter.courseId = courseId;
+
+        const record = await Attendance.findOneAndUpdate(
+            filter,
+            { status: status.toLowerCase(), remarks: remarks || "" },
+            { new: true }
+        );
+
+        if (!record) return res.status(400).json({ success: false, message: "Attendance record not found to edit" });
+
+        res.json({ success: true, message: "Attendance edited successfully", data: record });
+    } catch (err) { next(err); }
 };
