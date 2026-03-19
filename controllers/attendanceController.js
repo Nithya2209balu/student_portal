@@ -18,9 +18,16 @@ const computeSummary = async (userId) => {
     };
 };
 
-const computeList = async (userId, startDate, endDate, dateParam) => {
+const computeList = async (userId, startDate, endDate, dateParam, monthParam) => {
     const filter = { userId };
-    if (dateParam) {
+    if (monthParam) {
+        filter.date = {};
+        const [year, month] = monthParam.split("-");
+        const start = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
+        const end = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+        filter.date.$gte = start;
+        filter.date.$lte = end;
+    } else if (dateParam) {
         filter.date = {};
         const start = new Date(dateParam);
         start.setUTCHours(0, 0, 0, 0);
@@ -59,8 +66,8 @@ exports.getAttendanceSummary = async (req, res, next) => {
  */
 exports.getAttendanceList = async (req, res, next) => {
     try {
-        const { startDate, endDate, date } = req.query;
-        const records = await computeList(req.user.id, startDate, endDate, date);
+        const { startDate, endDate, date, month } = req.query;
+        const records = await computeList(req.user.id, startDate, endDate, date, month);
         res.json({ success: true, total: records.length, data: records });
     } catch (err) {
         next(err);
@@ -86,8 +93,8 @@ exports.getAttendanceSummaryById = async (req, res, next) => {
  */
 exports.getAttendanceListById = async (req, res, next) => {
     try {
-        const { startDate, endDate, date } = req.query;
-        const records = await computeList(req.params.userId, startDate, endDate, date);
+        const { startDate, endDate, date, month } = req.query;
+        const records = await computeList(req.params.userId, startDate, endDate, date, month);
         res.json({ success: true, total: records.length, data: records });
     } catch (err) {
         next(err);
