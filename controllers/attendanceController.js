@@ -148,20 +148,34 @@ exports.markAttendanceById = async (req, res, next) => {
         }
 
         // Set time to start of day for strict unique indexing
-        const recordDate = new Date(date);
-        recordDate.setUTCHours(0, 0, 0, 0);
+                // Date restriction: Only allow today
+        const inputDate = new Date(date);
+        const today = new Date();
+        const inputUTC = Date.UTC(inputDate.getUTCFullYear(), inputDate.getUTCMonth(), inputDate.getUTCDate());
+        const todayUTC = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+        
+        if (inputUTC !== todayUTC) {
+            return res.status(400).json({ success: false, message: "Attendance can only be marked for today's date." });
+        }
 
+        const recordDate = new Date(inputUTC);
         const filter = { userId, date: recordDate };
-        if (courseId) filter.courseId = courseId; // only apply course constraint if provided
+        if (courseId) filter.courseId = courseId; 
 
-        // Find existing record and update, or create a new one (upsert: true)
-        const record = await Attendance.findOneAndUpdate(
-            filter,
-            { status, remarks },
-            { new: true, upsert: true, setDefaultsOnInsert: true }
-        );
+        const existing = await Attendance.findOne(filter);
+        if (existing) {
+            return res.status(400).json({ success: false, message: "Attendance already marked for today. To edit attendance, use the HR verification 'request-edit' endpoint." });
+        }
 
-        res.status(200).json({ success: true, message: "Attendance marked successfully", data: record });
+        const record = await Attendance.create({
+            userId,
+            courseId: courseId || null,
+            date: recordDate,
+            status: status.toLowerCase(),
+            remarks: remarks || "",
+        });
+
+        res.status(201).json({ success: true, message: "Attendance marked successfully", data: record });
     } catch (err) {
         next(err);
     }
