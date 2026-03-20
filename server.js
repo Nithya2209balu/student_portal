@@ -25,6 +25,7 @@ app.use("/api/courses", require("./routes/courses"));
 app.use("/api/attendance", require("./routes/attendance"));
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/upload", require("./routes/upload"));
+app.use("/api/leave", require("./routes/leave"));
 
 // ── Health Check ──────────────────────────────────────────────────────────────
 app.get("/", (req, res) => {
