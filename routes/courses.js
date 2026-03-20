@@ -28,8 +28,8 @@ const { protect, isAdmin } = require("../middlewares/auth");
 // ── Category & Listing ──────────────────────────────────────────────────────
 router.get("/categories/names", protect, postCategoryNames);  // GET also supported
 router.post("/categories/names", protect, postCategoryNames); // POST supported
-router.get("/categories", protect, getCategories);
-router.post("/categories", protect, isAdmin, createCategory);
+router.get("/categories/list", protect, getCategories);
+router.post("/categories/list", protect, isAdmin, createCategory);
 router.get("/", protect, getCourses);
 router.post("/", protect, isAdmin, createCourse);   // ← Create a new course
 
