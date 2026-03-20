@@ -99,6 +99,40 @@ exports.getCourses = async (req, res, next) => {
     } catch (err) { next(err); }
 };
 
+/**
+ * POST /api/courses
+ * Create a new course (Admin only)
+ */
+exports.createCourse = async (req, res, next) => {
+    try {
+        const { 
+            title, description, imageUrl, amount, categoryId, 
+            tutorName, tutorRole, tutorImage 
+        } = req.body;
+
+        if (!title || !amount) {
+            return res.status(400).json({ success: false, message: "Title and amount are required" });
+        }
+
+        const course = await Course.create({
+            title,
+            description,
+            imageUrl,
+            amount,
+            categoryId,
+            tutorName,
+            tutorRole,
+            tutorImage
+        });
+
+        res.status(201).json({
+            success: true,
+            message: "Course created successfully",
+            data: course
+        });
+    } catch (err) { next(err); }
+};
+
 // ── Course About ──────────────────────────────────────────────────────────────
 exports.getCourseAbout = async (req, res, next) => {
     try {

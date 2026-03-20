@@ -1,11 +1,5 @@
 const express = require("express");
 const router = express.Router();
-
-router.use((req, res, next) => {
-    console.log(`[Courses Route] Request: ${req.method} ${req.originalUrl}`);
-    next();
-});
-
 const {
     getCategories,
     getCourses,
@@ -21,6 +15,7 @@ const {
     getLessonQuizScores,
     createCategory,
     postCategoryNames,
+    createCourse,
 } = require("../controllers/courseController");
 const { protect, isAdmin } = require("../middlewares/auth");
 
@@ -30,6 +25,7 @@ router.post("/categories/names", protect, postCategoryNames); // POST supported
 router.get("/categories", protect, getCategories);
 router.post("/categories", protect, isAdmin, createCategory);
 router.get("/", protect, getCourses);
+router.post("/", protect, isAdmin, createCourse);
 
 // ── Lesson-level (must come before /:id routes to avoid conflicts) ──────────
 router.get("/lessons/:lessonId/mcq", protect, getLessonMCQ);
