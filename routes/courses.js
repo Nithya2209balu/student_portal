@@ -1,5 +1,11 @@
 const express = require("express");
 const router = express.Router();
+
+router.use((req, res, next) => {
+    console.log(`[Courses Route] Request: ${req.method} ${req.originalUrl}`);
+    next();
+});
+
 const {
     getCategories,
     getCourses,
@@ -25,7 +31,7 @@ router.post("/categories/names", protect, postCategoryNames); // POST supported
 router.get("/categories", protect, getCategories);
 router.post("/categories", protect, isAdmin, createCategory);
 router.get("/", protect, getCourses);
-router.post("/", protect, isAdmin, createCourse);
+router.post("/", protect, isAdmin, createCourse);   // ← Create a new course
 
 // ── Lesson-level (must come before /:id routes to avoid conflicts) ──────────
 router.get("/lessons/:lessonId/mcq", protect, getLessonMCQ);

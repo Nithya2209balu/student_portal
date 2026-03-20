@@ -1,5 +1,6 @@
 const CourseCategory = require("../models/CourseCategory");
 const Course = require("../models/Course");
+const Counter = require("../models/Counter");
 const Lesson = require("../models/Lesson");
 const Enrollment = require("../models/Enrollment");
 const Doubt = require("../models/Doubt");
@@ -14,7 +15,7 @@ const CATEGORY_CODE_MAP = { 1001: "AI", 1002: "Web Development" };
 
 // Helper to flatten the category response
 const formatCategoryResponse = (cat) => ({
-    _id: cat._id,
+    courseId: cat.courseId,
     name: cat.name,
     description: cat.description,
     imageUrl: cat.imageUrl,
@@ -84,6 +85,57 @@ exports.createCategory = async (req, res, next) => {
 };
 
 // ── Courses List ──────────────────────────────────────────────────────────────
+
+// Helper to build a clean course response using courseId (not _id)
+const formatCourseResponse = (course) => ({
+    courseId: course.courseId,
+    title: course.title,
+    description: course.description,
+    imageUrl: course.imageUrl,
+    fees: course.amount,
+    categoryId: course.categoryId,
+    tutorName: course.tutorName,
+    tutorRole: course.tutorRole,
+    tutorImage: course.tutorImage,
+    reviewsCount: course.reviewsCount,
+    avgRating: course.avgRating,
+    isActive: course.isActive,
+});
+
+// ── Create Course ─────────────────────────────────────────────────────────────
+exports.createCourse = async (req, res, next) => {
+    try {
+        const { title, description, imageUrl, amount, categoryId, tutorName, tutorRole, tutorImage } = req.body;
+
+        if (!title) return res.status(400).json({ success: false, message: "Course title is required" });
+        if (!amount && amount !== 0) return res.status(400).json({ success: false, message: "Course fee (amount) is required" });
+        if (!categoryId) return res.status(400).json({ success: false, message: "categoryId is required" });
+
+        // Verify the category exists
+        const category = await CourseCategory.findById(categoryId);
+        if (!category) return res.status(404).json({ success: false, message: "Category not found" });
+
+        const course = new Course({
+            title,
+            description,
+            imageUrl,
+            amount,
+            categoryId,
+            tutorName,
+            tutorRole,
+            tutorImage,
+        });
+
+        await course.save(); // pre-save hook assigns courseId
+
+        res.status(201).json({
+            success: true,
+            message: "Course created successfully",
+            data: formatCourseResponse(course),
+        });
+    } catch (err) { next(err); }
+};
+
 exports.getCourses = async (req, res, next) => {
     try {
         const { categoryId } = req.query;
@@ -96,40 +148,6 @@ exports.getCourses = async (req, res, next) => {
             .sort({ createdAt: -1 });
 
         res.json({ success: true, data: courses });
-    } catch (err) { next(err); }
-};
-
-/**
- * POST /api/courses
- * Create a new course (Admin only)
- */
-exports.createCourse = async (req, res, next) => {
-    try {
-        const { 
-            title, description, imageUrl, amount, categoryId, 
-            tutorName, tutorRole, tutorImage 
-        } = req.body;
-
-        if (!title || !amount) {
-            return res.status(400).json({ success: false, message: "Title and amount are required" });
-        }
-
-        const course = await Course.create({
-            title,
-            description,
-            imageUrl,
-            amount,
-            categoryId,
-            tutorName,
-            tutorRole,
-            tutorImage
-        });
-
-        res.status(201).json({
-            success: true,
-            message: "Course created successfully",
-            data: course
-        });
     } catch (err) { next(err); }
 };
 

@@ -19,7 +19,7 @@ const courseSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-// Auto-increment courseId
+// Auto-increment courseId starting from 2000
 courseSchema.pre("save", async function (next) {
     if (!this.isNew) return next();
 
