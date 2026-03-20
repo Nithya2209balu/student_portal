@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const attendanceSchema = new mongoose.Schema(
     {
         userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-        courseId: { type: mongoose.Schema.Types.ObjectId, ref: "Course" },
+        courseId: { type: Number },  // custom numeric courseId (e.g. 2000, 2001...)
         date: { type: Date, required: true },
         status: {
             type: String,

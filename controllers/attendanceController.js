@@ -69,7 +69,7 @@ const computeList = async (userId, startDate, endDate, dateParam, monthParam) =>
             filter.date.$lte = end;
         }
     }
-    return Attendance.find(filter).populate("courseId", "title").sort({ date: -1 });
+    return Attendance.find(filter).sort({ date: -1 });
 };
 
 // ── Without ID (uses JWT token) ────────────────────────────────────────────
@@ -133,7 +133,8 @@ exports.getAttendanceListById = async (req, res, next) => {
  */
 exports.markAttendanceById = async (req, res, next) => {
     try {
-        const { date, courseId, remarks } = req.body;
+        const { date, remarks } = req.body;
+        const courseId = req.body.courseId ? Number(req.body.courseId) : null;
         let { status } = req.body;
         const userId = req.params.userId;
 
@@ -186,7 +187,8 @@ exports.markAttendanceById = async (req, res, next) => {
  */
 exports.requestAttendanceEditById = async (req, res, next) => {
     try {
-        const { date, courseId } = req.body;
+        const { date } = req.body;
+        const courseId = req.body.courseId ? Number(req.body.courseId) : null;
         if (!date) return res.status(400).json({ success: false, message: "Date is required" });
 
         const inputDate = new Date(date);
@@ -224,7 +226,8 @@ exports.requestAttendanceEditById = async (req, res, next) => {
  */
 exports.verifyAttendanceEditById = async (req, res, next) => {
     try {
-        const { otp, date, courseId, status, remarks } = req.body;
+        const { otp, date, status, remarks } = req.body;
+        const courseId = req.body.courseId ? Number(req.body.courseId) : null;
         if (!otp || !date || !status) return res.status(400).json({ success: false, message: "OTP, date, and new status are required" });
 
         const adminUser = await User.findById(req.user.id);
