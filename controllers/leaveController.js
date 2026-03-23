@@ -4,7 +4,9 @@ const Leave = require("../models/Leave");
 // POST /api/leave
 exports.createLeave = async (req, res, next) => {
     try {
-        const { type, description, startDate, endDate } = req.body;
+        const { userId, type, description, startDate, endDate } = req.body;
+
+        if (!userId)    return res.status(400).json({ success: false, message: "userId is required" });
 
         if (!type)      return res.status(400).json({ success: false, message: "Leave type is required" });
         if (!startDate) return res.status(400).json({ success: false, message: "startDate is required" });
@@ -16,34 +18,48 @@ exports.createLeave = async (req, res, next) => {
         if (isNaN(start) || isNaN(end)) {
             return res.status(400).json({ success: false, message: "Invalid date format. Use YYYY-MM-DD" });
         }
+
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
+
+        if (start < today) {
+            return res.status(400).json({ success: false, message: "Leave cannot be applied for past dates" });
+        }
+
         if (end < start) {
             return res.status(400).json({ success: false, message: "endDate cannot be before startDate" });
         }
 
         const leave = await Leave.create({
-            userId: req.user.id,
+            userId,
             type,
             description,
             startDate: start,
             endDate: end,
         });
 
+        const leaveObj = leave.toObject();
+        delete leaveObj.createdAt;
+        delete leaveObj.updatedAt;
+
         res.status(201).json({
             success: true,
             message: "Leave request submitted successfully",
-            data: leave,
+            data: leaveObj,
         });
     } catch (err) { next(err); }
 };
 
 // ── Get Leave Requests ────────────────────────────────────────────────────────
 // GET /api/leave
-// GET /api/leave?startDate=2026-03-01&endDate=2026-03-31
-// GET /api/leave?month=03&year=2026
+// GET /api/leave/:userId
+// GET /api/leave/:userId?startDate=2026-03-01&endDate=2026-03-31
+// GET /api/leave/:userId?month=03&year=2026
 exports.getLeaves = async (req, res, next) => {
     try {
+        const { userId } = req.params;
         const { startDate, endDate, month, year } = req.query;
-        const filter = { userId: req.user.id };
+        const filter = { userId };
 
         if (month && year) {
             // Monthly filter: all records whose startDate falls in that month
@@ -64,7 +80,9 @@ exports.getLeaves = async (req, res, next) => {
             }
         }
 
-        const leaves = await Leave.find(filter).sort({ startDate: -1 });
+        const leaves = await Leave.find(filter)
+            .select("-createdAt -updatedAt")
+            .sort({ startDate: -1 });
 
         res.json({
             success: true,
