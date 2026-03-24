@@ -1,9 +1,21 @@
 const express = require("express");
 const router = express.Router();
-const { createLeave, getLeaves } = require("../controllers/leaveController");
-const { protect } = require("../middlewares/auth");
+const {
+    createLeave,
+    getAllLeaves,
+    getLeavesByUser,
+    updateLeaveStatus,
+} = require("../controllers/leaveController");
+const { protect, isAdmin } = require("../middlewares/auth");
 
-router.post("/", protect, createLeave);         // POST /api/leave
-router.get("/:userId", protect, getLeaves);    // GET  /api/leave/:userId
+// ── User Routes ───────────────────────────────────────────────────────────────
+router.post("/", protect, createLeave);                 // POST /api/leave
+
+// ── Admin Routes ──────────────────────────────────────────────────────────────
+router.get("/", protect, isAdmin, getAllLeaves);         // GET  /api/leave  (all | ?status=pending/approved/rejected)
+router.put("/:leaveId/status", protect, isAdmin, updateLeaveStatus); // PUT  /api/leave/:leaveId/status
+
+// ── User-Specific Routes ──────────────────────────────────────────────────────
+router.get("/:userId", protect, getLeavesByUser);       // GET  /api/leave/:userId  (+ date/month filters)
 
 module.exports = router;
