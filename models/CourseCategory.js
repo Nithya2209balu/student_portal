@@ -8,6 +8,7 @@ const courseCategorySchema = new mongoose.Schema(
         description: { type: String },
         imageUrl: { type: String },
         fees: { type: Number, default: 0 },
+        duration: { type: Number }, // duration in months
         categoryCode: { type: Number, unique: true, sparse: true }, // fixed IDs: 1001=AI, 1002=Web Development
         parentCategoryId: { type: mongoose.Schema.Types.ObjectId, ref: "CourseCategory", default: null },
     },

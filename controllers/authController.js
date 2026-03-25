@@ -44,6 +44,7 @@ const sanitizeUser = (user) => ({
     mobile: user.mobile,
     studentType: user.studentType,
     courseName: user.courseName,
+    courseId: user.courseId,
     role: user.role,
     isApproved: user.isApproved,
 });
@@ -55,7 +56,7 @@ const sanitizeUser = (user) => ({
  */
 exports.register = async (req, res, next) => {
     try {
-        const { name, email, mobile, password, confirmPassword, studentType, courseName } = req.body;
+        const { name, email, mobile, password, confirmPassword, studentType, courseName, courseId } = req.body;
 
         if (!name || !email || !mobile || !password || !confirmPassword || !studentType)
             return res.status(400).json({ success: false, message: "All fields are required" });
@@ -70,7 +71,7 @@ exports.register = async (req, res, next) => {
         if (existing)
             return res.status(400).json({ success: false, message: "Email already registered" });
 
-        const user = await User.create({ name, email, mobile, password, studentType, courseName });
+        const user = await User.create({ name, email, mobile, password, studentType, courseName, courseId });
 
         res.status(201).json({
             success: true,
@@ -340,7 +341,7 @@ exports.getStudentById = async (req, res, next) => {
  */
 exports.updateStudentById = async (req, res, next) => {
     try {
-        const { name, email, mobile, studentType, courseName, isApproved } = req.body;
+        const { name, email, mobile, studentType, courseName, courseId, isApproved } = req.body;
         
         let student = await User.findById(req.params.id);
         if (!student || student.role !== "student")
@@ -352,6 +353,7 @@ exports.updateStudentById = async (req, res, next) => {
         if (mobile) student.mobile = mobile;
         if (studentType) student.studentType = studentType;
         if (courseName && student.studentType === "offline") student.courseName = courseName;
+        if (courseId) student.courseId = courseId;
         if (typeof isApproved !== "undefined") student.isApproved = isApproved;
 
         await student.save();

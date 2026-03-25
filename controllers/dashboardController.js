@@ -1,26 +1,36 @@
-const Enrollment = require("../models/Enrollment");
+const User = require("../models/User");
+const CourseCategory = require("../models/CourseCategory");
 const Attendance = require("../models/Attendance");
 
 // Shared helper: compute dashboard stats for a given userId
 const computeDashboard = async (userId) => {
-    const totalClasses = await Enrollment.countDocuments({
-        userId,
-        paymentStatus: "paid",
-    });
+    // 1. Fetch student to get courseId
+    const student = await User.findById(userId);
+    if (!student) throw new Error("Student not found");
 
+    // 2. Fetch course category to get duration in months
+    let duration = 0;
+    if (student.courseId) {
+        const category = await CourseCategory.findOne({ courseId: student.courseId });
+        if (category && category.duration) {
+            duration = category.duration;
+        }
+    }
+
+    // 3. Convert Duration (months to days)
+    const totalClasses = duration * 30;
+
+    // 4. Calculate Attendance
     const attendanceRecords = await Attendance.find({ userId });
-    const presentCount = attendanceRecords.filter((r) => r.status === "present").length;
-    const totalRecords = attendanceRecords.filter(
-        (r) => r.status === "present" || r.status === "absent"
-    ).length;
-
-    const avgAttendancePercent =
-        totalRecords > 0 ? Math.round((presentCount / totalRecords) * 100) : 0;
+    const attendedClasses = attendanceRecords.filter((r) => r.status === "present").length;
+    
+    // 5. Optionally compute percentage
+    const attendancePercentage = totalClasses > 0 ? Math.round((attendedClasses / totalClasses) * 100) : 0;
 
     return {
-        "total classes": totalClasses,
-        "Average attendance percentage": avgAttendancePercent,
-        "current class count": totalClasses,
+        totalClasses,
+        attendedClasses,
+        attendancePercentage,
     };
 };
 

@@ -20,6 +20,7 @@ const formatCategoryResponse = (cat) => ({
     description: cat.description,
     imageUrl: cat.imageUrl,
     fees: cat.fees,
+    duration: cat.duration,
     categoryCode: cat.categoryCode || (cat.parentCategoryId ? cat.parentCategoryId.categoryCode : null)
 });
 
@@ -50,7 +51,7 @@ exports.postCategoryNames = async (req, res, next) => {
 
 exports.createCategory = async (req, res, next) => {
     try {
-        const { name, description, imageUrl, fees, categoryId } = req.body;
+        const { name, description, imageUrl, fees, duration, categoryId } = req.body;
         if (!name) return res.status(400).json({ success: false, message: "Category name is required" });
         if (!categoryId) return res.status(400).json({ success: false, message: "categoryId is required (1001 for AI, 1002 for Web Development)" });
 
@@ -72,6 +73,7 @@ exports.createCategory = async (req, res, next) => {
             description,
             imageUrl,
             fees: fees || 0,
+            duration: duration || null,
             parentCategoryId: parent._id,
         });
 
