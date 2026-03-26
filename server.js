@@ -14,6 +14,8 @@ const app = express();
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
+// Serve the uploads directory statically so files can be accessed via URL
+app.use("/uploads", express.static("uploads"));
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use("/api/auth", require("./routes/auth"));
@@ -26,6 +28,7 @@ app.use("/api/attendance", require("./routes/attendance"));
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/upload", require("./routes/upload"));
 app.use("/api/leave", require("./routes/leave"));
+app.use("/api/tasks", require("./routes/task"));
 
 // ── Health Check ──────────────────────────────────────────────────────────────
 app.get("/", (req, res) => {
