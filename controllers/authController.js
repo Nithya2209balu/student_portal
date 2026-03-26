@@ -45,6 +45,7 @@ const sanitizeUser = (user) => ({
     studentType: user.studentType,
     courseName: user.courseName,
     courseId: user.courseId,
+    fcmToken: user.fcmToken,
     role: user.role,
     isApproved: user.isApproved,
 });
@@ -56,7 +57,7 @@ const sanitizeUser = (user) => ({
  */
 exports.register = async (req, res, next) => {
     try {
-        const { name, email, mobile, password, confirmPassword, studentType, courseName, courseId } = req.body;
+        const { name, email, mobile, password, confirmPassword, studentType, courseName, courseId, fcmToken } = req.body;
 
         if (!name || !email || !mobile || !password || !confirmPassword || !studentType)
             return res.status(400).json({ success: false, message: "All fields are required" });
@@ -71,7 +72,7 @@ exports.register = async (req, res, next) => {
         if (existing)
             return res.status(400).json({ success: false, message: "Email already registered" });
 
-        const user = await User.create({ name, email, mobile, password, studentType, courseName, courseId });
+        const user = await User.create({ name, email, mobile, password, studentType, courseName, courseId, fcmToken });
 
         res.status(201).json({
             success: true,
