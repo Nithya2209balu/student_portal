@@ -59,3 +59,33 @@ exports.getDashboardCountsById = async (req, res, next) => {
         next(err);
     }
 };
+
+/**
+ * GET /api/dashboard/admin/attendance
+ * Admin only - Returns overall attendance stats across ALL students
+ */
+exports.getAdminAttendanceDashboard = async (req, res, next) => {
+    try {
+        const records = await Attendance.find();
+        
+        const presentCount = records.filter(r => r.status === "present").length;
+        const absentCount = records.filter(r => r.status === "absent").length;
+        const holidayCount = records.filter(r => r.status === "holiday").length;
+        
+        const workingDays = presentCount + absentCount;
+        const attendancePercentage = workingDays > 0 ? Math.round((presentCount / workingDays) * 100) : 0;
+
+        res.json({
+            success: true,
+            data: {
+                totalDays: records.length,          // 📊 Total Attendance Records
+                presentCount,                       // ✅ Present Count
+                absentCount,                        // ❌ Absent Count
+                holidayCount,                       // 🏖️ Holiday Count
+                attendancePercentage                // 📈 Attendance %
+            }
+        });
+    } catch (err) {
+        next(err);
+    }
+};

@@ -1,7 +1,10 @@
 const express = require("express");
 const router = express.Router();
-const { getDashboardCounts, getDashboardCountsById } = require("../controllers/dashboardController");
-const { protect } = require("../middlewares/auth");
+const { getDashboardCounts, getDashboardCountsById, getAdminAttendanceDashboard } = require("../controllers/dashboardController");
+const { protect, isAdmin } = require("../middlewares/auth");
+
+// Admin overall student dashboard
+router.get("/admin/attendance", protect, isAdmin, getAdminAttendanceDashboard);
 
 // Without ID – uses the logged-in student's JWT token
 router.get("/counts", protect, getDashboardCounts);
