@@ -388,3 +388,44 @@ exports.deleteStudentById = async (req, res, next) => {
         next(err);
     }
 };
+
+/**
+ * PUT /api/users/update-fcm-token
+ * Update FCM token using email/password verification
+ */
+exports.updateFCMToken = async (req, res, next) => {
+    try {
+        const { email, password, fcmToken } = req.body;
+
+        // 1. Validate Input
+        if (!email || !password) {
+            return res.status(400).json({ success: false, message: "Email and password are required" });
+        }
+        if (!fcmToken || typeof fcmToken !== "string" || fcmToken.trim() === "") {
+            return res.status(400).json({ success: false, message: "fcmToken must be a non-empty string" });
+        }
+
+        // 2. Find User by Email
+        const user = await User.findOne({ email: email.toLowerCase() });
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        // 3. Verify Password
+        const isMatch = await user.matchPassword(password);
+        if (!isMatch) {
+            return res.status(401).json({ success: false, message: "Invalid credentials" });
+        }
+
+        // 4. Update FCM Token
+        user.fcmToken = fcmToken.trim();
+        await user.save();
+
+        res.json({
+            success: true,
+            message: "FCM token saved successfully"
+        });
+    } catch (err) {
+        next(err);
+    }
+};
