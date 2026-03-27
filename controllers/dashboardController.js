@@ -1,6 +1,8 @@
 const User = require("../models/User");
 const CourseCategory = require("../models/CourseCategory");
 const Attendance = require("../models/Attendance");
+const Leave = require("../models/Leave");
+const Task = require("../models/Task");
 
 // Shared helper: compute dashboard stats for a given userId
 const computeDashboard = async (userId) => {
@@ -88,4 +90,88 @@ exports.getAdminAttendanceDashboard = async (req, res, next) => {
     } catch (err) {
         next(err);
     }
+};
+
+/**
+ * GET /api/dashboard/overall/:userId
+ * Unified dashboard for a specific student (Attendance + Leave + Tasks)
+ */
+exports.getUnifiedUserDashboard = async (req, res, next) => {
+    try {
+        const { userId } = req.params;
+
+        // 1. Attendance Stats
+        const attendance = await computeDashboard(userId);
+
+        // 2. Leave Stats
+        const leaves = await Leave.find({ userId });
+        const leaveStats = {
+            total: leaves.length,
+            pending: leaves.filter(l => l.status === "pending").length,
+            approved: leaves.filter(l => l.status === "approved").length,
+            rejected: leaves.filter(l => l.status === "rejected").length,
+        };
+
+        // 3. Task Stats
+        const taskCount = await Task.countDocuments({ createdBy: userId });
+
+        res.json({
+            success: true,
+            data: {
+                attendance,
+                leave: leaveStats,
+                tasks: { total: taskCount }
+            }
+        });
+    } catch (err) { next(err); }
+};
+
+/**
+ * GET /api/dashboard/admin/overall
+ * Unified dashboard for Admin (Platform-wide stats)
+ */
+exports.getUnifiedAdminDashboard = async (req, res, next) => {
+    try {
+        // 1. Students
+        const totalStudents = await User.countDocuments({ role: "student" });
+        const pendingStudents = await User.countDocuments({ role: "student", isApproved: false });
+        
+        // 2. Courses/Categories
+        const totalCategories = await CourseCategory.countDocuments();
+
+        // 3. Attendance (Overall)
+        const attRecords = await Attendance.find();
+        const attPresent = attRecords.filter(r => r.status === "present").length;
+        const attAbsent = attRecords.filter(r => r.status === "absent").length;
+        const attWorking = attPresent + attAbsent;
+        const attPercent = attWorking > 0 ? Math.round((attPresent / attWorking) * 100) : 0;
+
+        // 4. Leaves (Overall)
+        const allLeaves = await Leave.find();
+        const leaveStats = {
+            total: allLeaves.length,
+            pending: allLeaves.filter(l => l.status === "pending").length,
+            approved: allLeaves.filter(l => l.status === "approved").length,
+        };
+
+        // 5. Tasks (Overall)
+        const totalTasks = await Task.countDocuments();
+
+        res.json({
+            success: true,
+            data: {
+                users: {
+                    totalStudents,
+                    pendingApprovals: pendingStudents
+                },
+                courses: { total: totalCategories },
+                attendance: {
+                    totalRecords: attRecords.length,
+                    averagePercentage: attPercent
+                },
+                leave: leaveStats,
+                tasks: { total: totalTasks }
+            }
+        });
+    } catch (err) { next(err); }
 };
