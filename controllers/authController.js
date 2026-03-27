@@ -112,8 +112,11 @@ exports.login = async (req, res, next) => {
                 message: "Your account is pending admin approval. Please wait for approval before logging in.",
             });
 
-        // Store FCM token
-        if (fcmToken) { user.fcmToken = fcmToken; await user.save(); }
+        // Store FCM token (only if provided and non-empty)
+        if (fcmToken && typeof fcmToken === "string" && fcmToken.trim() !== "") { 
+            user.fcmToken = fcmToken; 
+            await user.save(); 
+        }
 
         res.json({
             success: true,
@@ -230,7 +233,9 @@ exports.loginWithOTP = async (req, res, next) => {
 
         user.otp = undefined;
         user.otpExpiry = undefined;
-        if (fcmToken) user.fcmToken = fcmToken;
+        if (fcmToken && typeof fcmToken === "string" && fcmToken.trim() !== "") {
+            user.fcmToken = fcmToken;
+        }
         await user.save();
 
         // Block unapproved students
@@ -342,7 +347,7 @@ exports.getStudentById = async (req, res, next) => {
  */
 exports.updateStudentById = async (req, res, next) => {
     try {
-        const { name, email, mobile, studentType, courseName, courseId, isApproved } = req.body;
+        const { name, email, mobile, studentType, courseName, courseId, fcmToken, isApproved } = req.body;
         
         let student = await User.findById(req.params.id);
         if (!student || student.role !== "student")
@@ -355,6 +360,7 @@ exports.updateStudentById = async (req, res, next) => {
         if (studentType) student.studentType = studentType;
         if (courseName && student.studentType === "offline") student.courseName = courseName;
         if (courseId) student.courseId = courseId;
+        if (fcmToken && typeof fcmToken === "string" && fcmToken.trim() !== "") student.fcmToken = fcmToken;
         if (typeof isApproved !== "undefined") student.isApproved = isApproved;
 
         await student.save();
