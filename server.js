@@ -2,12 +2,10 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const connectDB = require("./config/db");
-const { initFirebase } = require("./config/firebase");
 const errorHandler = require("./middlewares/errorHandler");
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 connectDB();
-initFirebase();
 
 const app = express();
 
