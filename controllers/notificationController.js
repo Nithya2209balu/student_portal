@@ -44,7 +44,7 @@ exports.getAllNotifications = async (req, res, next) => {
  */
 exports.saveToken = async (req, res, next) => {
     try {
-        const { token } = req.body;
+        const token = req.body.token || req.body.fcmToken;
         if (!token) return res.status(400).json({ success: false, message: "Token required" });
 
         // If user is logged in (has req.user), save it to their profile strictly

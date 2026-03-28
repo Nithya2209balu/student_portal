@@ -57,7 +57,9 @@ const sanitizeUser = (user) => ({
  */
 exports.register = async (req, res, next) => {
     try {
-        const { name, email, mobile, password, confirmPassword, studentType, courseName, courseId, fcmToken } = req.body;
+        const { name, email, mobile, password, confirmPassword, studentType, courseName, courseId } = req.body;
+        // Support both 'fcmToken' and 'token' from frontend
+        const fcmToken = req.body.fcmToken || req.body.token;
 
         if (!name || !email || !mobile || !password || !confirmPassword || !studentType)
             return res.status(400).json({ success: false, message: "All fields are required" });
@@ -90,7 +92,9 @@ exports.register = async (req, res, next) => {
  */
 exports.login = async (req, res, next) => {
     try {
-        const { identifier, password, fcmToken, rememberMe } = req.body;
+        // Support both 'fcmToken' and 'token' from frontend
+        const fcmToken = req.body.fcmToken || req.body.token;
+        const { identifier, password, rememberMe } = req.body;
         if (!identifier || !password)
             return res.status(400).json({ success: false, message: "Identifier and password are required" });
 
@@ -223,7 +227,9 @@ exports.resetPassword = async (req, res, next) => {
  */
 exports.loginWithOTP = async (req, res, next) => {
     try {
-        const { email, otp, fcmToken, rememberMe } = req.body;
+        const { email, otp, rememberMe } = req.body;
+        // Support both 'fcmToken' and 'token' from frontend
+        const fcmToken = req.body.fcmToken || req.body.token;
         if (!email || !otp)
             return res.status(400).json({ success: false, message: "Email and OTP are required" });
 
@@ -395,7 +401,9 @@ exports.deleteStudentById = async (req, res, next) => {
  */
 exports.updateFCMToken = async (req, res, next) => {
     try {
-        const { email, password, fcmToken } = req.body;
+        const { email, password } = req.body;
+        // Support both 'fcmToken' and 'token' from frontend
+        const fcmToken = req.body.fcmToken || req.body.token;
 
         // 1. Validate Input
         if (!email || !password) {
