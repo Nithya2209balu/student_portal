@@ -265,7 +265,7 @@ exports.loginWithOTP = async (req, res, next) => {
 exports.listPendingStudents = async (req, res, next) => {
     try {
         const students = await User.find({ role: "student", isApproved: false })
-            .select("-password -otp -otpExpiry -fcmToken")
+            .select("-password -otp -otpExpiry")
             .sort({ createdAt: -1 });
         res.json({ success: true, count: students.length, data: students });
     } catch (err) {
@@ -280,7 +280,7 @@ exports.listPendingStudents = async (req, res, next) => {
 exports.listAllStudents = async (req, res, next) => {
     try {
         const students = await User.find({ role: "student" })
-            .select("-password -otp -otpExpiry -fcmToken")
+            .select("-password -otp -otpExpiry")
             .sort({ createdAt: -1 });
         res.json({ success: true, count: students.length, data: students });
     } catch (err) {
@@ -331,7 +331,7 @@ exports.rejectStudent = async (req, res, next) => {
  */
 exports.getStudentById = async (req, res, next) => {
     try {
-        const student = await User.findById(req.params.id).select("-password -otp -otpExpiry -resetToken -resetTokenExpiry -fcmToken");
+        const student = await User.findById(req.params.id).select("-password -otp -otpExpiry -resetToken -resetTokenExpiry");
         if (!student || student.role !== "student")
             return res.status(404).json({ success: false, message: "Student not found" });
 

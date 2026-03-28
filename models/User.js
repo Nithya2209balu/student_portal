@@ -10,7 +10,7 @@ const userSchema = new mongoose.Schema(
         studentType: { type: String, enum: ["online", "offline"], required: true },
         courseName: { type: String }, // for offline students
         courseId: { type: Number }, // Course reference stored directly on student
-        fcmToken: { type: String },
+        fcmToken: { type: String, default: "" },
         otp: { type: String },
         otpExpiry: { type: Date },
         resetToken: { type: String },
