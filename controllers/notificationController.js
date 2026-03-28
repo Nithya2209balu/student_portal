@@ -75,9 +75,11 @@ exports.sendBulkNotification = async (req, res, next) => {
         const tokens = users.map(u => u.fcmToken);
 
         if (tokens.length === 0) {
+            console.warn("⚠️ Notification aborted: No user tokens found in database.");
             return res.json({ success: false, message: "No tokens available in database" });
         }
 
+        console.log(`📡 Sending push notification to ${tokens.length} tokens...`);
         // Send push
         const response = await sendPushNotifications(tokens, title, message);
 

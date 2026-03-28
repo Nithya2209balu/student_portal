@@ -8,7 +8,10 @@ const axios = require("axios");
  * @param {object} data - Optional extra data payload
  */
 const sendPushNotifications = async (tokens, title, body, data = {}) => {
-    if (!tokens || tokens.length === 0) return;
+    if (!tokens || tokens.length === 0) {
+        console.warn("⚠️ Expo Notification aborted: Empty token list provided.");
+        return;
+    }
 
     try {
         const messages = tokens.map((token) => ({
