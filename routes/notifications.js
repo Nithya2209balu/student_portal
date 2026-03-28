@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 const express = require('express');
 const axios = require('axios');
 const router = express.Router();
@@ -63,5 +64,16 @@ router.post('/send-notification', async (req, res) => {
     res.status(500).json({ error: 'Notification failed' });
   }
 });
+=======
+const express = require("express");
+const router = express.Router();
+const { getNotifications, getAllNotifications, saveToken, sendBulkNotification } = require("../controllers/notificationController");
+const { protect, isAdmin } = require("../middlewares/auth");
+
+router.get("/", protect, getNotifications);
+router.get("/all", protect, isAdmin, getAllNotifications);
+router.post("/save-token", protect, saveToken);
+router.post("/send-notification", protect, isAdmin, sendBulkNotification);
+>>>>>>> 05b32e21784c875d9737a17180ec51120a1a6194
 
 module.exports = router;
