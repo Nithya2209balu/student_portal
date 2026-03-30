@@ -1,7 +1,8 @@
 const axios = require("axios");
+const admin = require("./firebase");
 
 /**
- * Send Push Notifications using Expo's API
+ * Send Push Notifications using either FCM or Expo
  * @param {string[]} tokens - Array of target device tokens
  * @param {string} title - Notification title
  * @param {string} body - Notification body
@@ -9,36 +10,75 @@ const axios = require("axios");
  */
 const sendPushNotifications = async (tokens, title, body, data = {}) => {
     if (!tokens || tokens.length === 0) {
-        console.warn("⚠️ Expo Notification aborted: Empty token list provided.");
+        console.warn("⚠️ Notification aborted: Empty token list provided.");
         return;
     }
 
-    try {
-        const messages = tokens.map((token) => ({
-            to: token,
-            sound: "default",
-            title: title || "Hello 👋",
-            body: body || "Test Notification",
-            data: { screen: "home", ...data },
-        }));
+    const expoTokens = [];
+    const fcmTokens = [];
 
-        const response = await axios.post(
-            "https://exp.host/--/api/v2/push/send",
-            messages,
-            {
-                headers: {
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                    "Accept-encoding": "gzip, deflate"
+    // 1. Sort tokens into Expo and FCM groups
+    tokens.forEach((token) => {
+        if (token.startsWith("ExponentPushToken[")) {
+            expoTokens.push(token);
+        } else {
+            fcmTokens.push(token);
+        }
+    });
+
+    const results = { fcm: null, expo: null };
+
+    // 2. Send via FCM (Firebase)
+    if (fcmTokens.length > 0) {
+        try {
+            const message = {
+                notification: {
+                    title: title || "Hello 👋",
+                    body: body || "New Notification",
                 },
-            }
-        );
+                data: { screen: "home", ...data },
+                tokens: fcmTokens,
+            };
 
-        console.log("✅ Expo Push Notifications sent:", response.data);
-        return response.data;
-    } catch (err) {
-        console.error("❌ Expo Notification error:", err.response?.data || err.message);
+            const response = await admin.messaging().sendEachForMulticast(message);
+            console.log(`✅ FCM Push Notifications: ${response.successCount} success, ${response.failureCount} failure`);
+            results.fcm = response;
+        } catch (err) {
+            console.error("❌ FCM Notification error:", err.message);
+        }
     }
+
+    // 3. Send via Expo (Fallback or grouped)
+    if (expoTokens.length > 0) {
+        try {
+            const messages = expoTokens.map((token) => ({
+                to: token,
+                sound: "default",
+                title: title || "Hello 👋",
+                body: body || "New Notification",
+                data: { screen: "home", ...data },
+            }));
+
+            const response = await axios.post(
+                "https://exp.host/--/api/v2/push/send",
+                messages,
+                {
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                        "Accept-encoding": "gzip, deflate",
+                    },
+                }
+            );
+
+            console.log("✅ Expo Push Notifications sent:", response.data);
+            results.expo = response.data;
+        } catch (err) {
+            console.error("❌ Expo Notification error:", err.response?.data || err.message);
+        }
+    }
+
+    return results;
 };
 
 module.exports = { sendPushNotifications };

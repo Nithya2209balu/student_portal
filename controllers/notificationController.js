@@ -22,6 +22,26 @@ exports.getNotifications = async (req, res, next) => {
 };
 
 /**
+ * GET /api/notifications/user/:userId
+ * Admin/System - fetch all notifications received by a specific user ID
+ */
+exports.getNotificationsByUserId = async (req, res, next) => {
+    try {
+        const { userId } = req.params;
+        const notifications = await Notification.find({
+            $or: [{ targetAll: true }, { userId }],
+        })
+            .select("-updatedAt -__v")
+            .sort({ createdAt: -1 })
+            .limit(50);
+
+        res.json({ success: true, count: notifications.length, data: notifications });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
  * GET /api/notifications/all
  * Admin only - fetch all notifications across the platform
  */
