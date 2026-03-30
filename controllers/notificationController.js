@@ -8,9 +8,17 @@ const { sendPushNotifications } = require("../config/notifications");
 exports.getNotifications = async (req, res, next) => {
     try {
         const userId = req.user.id;
-        const notifications = await Notification.find({
+        const { unreadOnly } = req.query;
+        
+        const filter = {
             $or: [{ targetAll: true }, { userId }],
-        })
+        };
+
+        if (unreadOnly === "true") {
+            filter.isRead = false;
+        }
+
+        const notifications = await Notification.find(filter)
             .select("-updatedAt -__v")
             .sort({ createdAt: -1 })
             .limit(50);
@@ -88,29 +96,87 @@ exports.saveToken = async (req, res, next) => {
  */
 exports.sendBulkNotification = async (req, res, next) => {
     try {
-        const { title, message } = req.body;
+        const { title, message, token, tokens: providedTokens, userId } = req.body;
         
-        // Fetch all users who have a token
-        const users = await User.find({ fcmToken: { $exists: true, $ne: "" } }).select("fcmToken");
-        const tokens = users.map(u => u.fcmToken);
+        let targetTokens = [];
 
-        if (tokens.length === 0) {
-            console.warn("⚠️ Notification aborted: No user tokens found in database.");
-            return res.json({ success: false, message: "No tokens available in database" });
+        // 1. If specific tokens are provided
+        if (providedTokens && Array.isArray(providedTokens)) {
+            targetTokens = providedTokens;
+        } else if (token) {
+            targetTokens = [token];
+        } 
+        // 2. If a specific userId is provided
+        else if (userId) {
+            const user = await User.findById(userId).select("fcmToken");
+            if (user && user.fcmToken) {
+                targetTokens = [user.fcmToken];
+            }
+        }
+        // 3. Otherwise, fetch all users who have a token (Blast)
+        else {
+            const users = await User.find({ fcmToken: { $exists: true, $ne: "" } }).select("fcmToken");
+            targetTokens = users.map(u => u.fcmToken);
         }
 
-        console.log(`📡 Sending push notification to ${tokens.length} tokens...`);
-        // Send push
-        const response = await sendPushNotifications(tokens, title, message);
+        if (targetTokens.length === 0) {
+            return res.json({ success: false, message: "No target tokens found" });
+        }
 
-        // Save to notification history in DB as a "targetAll" notification
+        console.log(`📡 Sending push notification to ${targetTokens.length} tokens...`);
+        const response = await sendPushNotifications(targetTokens, title, message);
+
+        // Save to notification history in DB
         await Notification.create({
             title: title || "Broadcast",
             message: message || "New announcement",
-            targetAll: true
+            targetAll: !userId && !token && !providedTokens,
+            userId: userId || null
         });
 
-        res.json({ success: true, response });
+        res.json({ success: true, targetCount: targetTokens.length, response });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * PATCH /api/notifications/:id/read
+ * Mark a specific notification as read
+ */
+exports.markAsRead = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const notification = await Notification.findByIdAndUpdate(
+            id,
+            { isRead: true },
+            { new: true }
+        );
+
+        if (!notification) {
+            return res.status(404).json({ success: false, message: "Notification not found" });
+        }
+
+        res.json({ success: true, message: "Marked as read", data: notification });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * DELETE /api/notifications/:id
+ * Delete a specific notification for the user
+ */
+exports.deleteNotification = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const notification = await Notification.findByIdAndDelete(id);
+
+        if (!notification) {
+            return res.status(404).json({ success: false, message: "Notification not found" });
+        }
+
+        res.json({ success: true, message: "Notification deleted" });
     } catch (err) {
         next(err);
     }

@@ -128,14 +128,23 @@ exports.updateLeaveStatus = async (req, res, next) => {
 
         if (!leave) return res.status(404).json({ success: false, message: "Leave request not found" });
 
-        // 🔔 Send notification to the user
+        // 🔔 Save notification to DB history
         const statusLabel = status === "approved" ? "Approved ✅" : "Rejected ❌";
+        const title = `Leave Request ${statusLabel}`;
+        const message = `Your ${leave.type} request from ${leave.startDate.toISOString().slice(0, 10)} to ${leave.endDate.toISOString().slice(0, 10)} has been ${status}.`;
+
         await Notification.create({
             userId: leave.userId,
             targetAll: false,
-            title: `Leave Request ${statusLabel}`,
-            message: `Your ${leave.type} request from ${leave.startDate.toISOString().slice(0, 10)} to ${leave.endDate.toISOString().slice(0, 10)} has been ${status}.`,
+            title,
+            message,
         });
+
+        // 📡 Trigger Push Notification
+        const user = await User.findById(leave.userId).select("fcmToken");
+        if (user && user.fcmToken) {
+            await sendPushNotifications([user.fcmToken], title, message);
+        }
 
         res.json({
             success: true,
