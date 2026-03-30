@@ -19,6 +19,10 @@ const sendPushNotifications = async (tokens, title, body, data = {}) => {
 
     // 1. Sort tokens into Expo and FCM groups
     tokens.forEach((token) => {
+        if (!token || typeof token !== "string") {
+            return;
+        }
+
         if (token.startsWith("ExponentPushToken[")) {
             expoTokens.push(token);
         } else {
