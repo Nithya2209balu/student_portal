@@ -13,23 +13,40 @@ try {
         const fs = require("fs");
         const serviceAccountPath = path.join(__dirname, "serviceAccountKey.json");
 
-        if (fs.existsSync(serviceAccountPath)) {
-            try {
-                const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf8"));
-                // Ensure private key has actual newlines, not literal '\n' strings
-                if (serviceAccount.private_key) {
-                    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
-                }
+        let serviceAccount;
 
-                admin.initializeApp({
-                    credential: admin.credential.cert(serviceAccount),
-                });
-                console.log("🔥 Firebase Admin initialized successfully with Service Account");
-            } catch (jsonErr) {
-                console.error("❌ Error parsing serviceAccountKey.json:", jsonErr.message);
+        // 1. Try environment variable first (Recommended for Render/Heroku)
+        if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+            try {
+                serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+                console.log("🔥 Firebase Admin: Using credentials from Environment Variable");
+            } catch (err) {
+                console.error("❌ Firebase Admin: Error parsing FIREBASE_SERVICE_ACCOUNT env var", err.message);
             }
+        }
+
+        // 2. Try file if no env var or env var failed
+        if (!serviceAccount && fs.existsSync(serviceAccountPath)) {
+            try {
+                serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf8"));
+                console.log("🔥 Firebase Admin: Using credentials from serviceAccountKey.json");
+            } catch (jsonErr) {
+                console.error("❌ Firebase Admin: Error parsing serviceAccountKey.json:", jsonErr.message);
+            }
+        }
+
+        if (serviceAccount) {
+            // Ensure private key has actual newlines
+            if (serviceAccount.private_key) {
+                serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
+            }
+
+            admin.initializeApp({
+                credential: admin.credential.cert(serviceAccount),
+            });
+            console.log("🔥 Firebase Admin initialized successfully");
         } else {
-            console.warn("⚠️ Firebase Admin: serviceAccountKey.json not found. Notifications may fail.");
+            console.warn("⚠️ Firebase Admin: No credentials found (ENV or File). Notifications will fail.");
         }
     }
 } catch (error) {

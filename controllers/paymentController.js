@@ -14,6 +14,26 @@ exports.getPaymentDashboard = async (req, res, next) => {
         const payment = await Payment.findOne({ userId }).sort({ createdAt: -1 });
 
         if (!payment) {
+            // New fallback: Fetch from User -> Course if no payment record exists yet
+            const user = await User.findById(userId).select("courseId courseName");
+            if (user && user.courseId) {
+                const course = await Course.findOne({ courseId: user.courseId });
+                if (course) {
+                    return res.json({
+                        success: true,
+                        data: {
+                            totalFees: course.amount,
+                            paidAmount: 0,
+                            remainingAmount: course.amount,
+                            durationInDays: 0,
+                            daysLeft: 0,
+                            status: "pending",
+                            courseName: course.title
+                        },
+                    });
+                }
+            }
+
             return res.json({
                 success: true,
                 data: {
@@ -250,6 +270,38 @@ exports.listPayments = async (req, res, next) => {
             .sort({ createdAt: -1 });
 
         res.json({ success: true, count: payments.length, data: payments });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * 🔹 ADMIN: Get Student Course & Fees (for form pre-fill)
+ * GET /api/payments/admin/student-course/:userId
+ */
+exports.getStudentCourseInfo = async (req, res, next) => {
+    try {
+        const { userId } = req.params;
+        const user = await User.findById(userId).select("name courseId courseName");
+
+        if (!user) return res.status(404).json({ success: false, message: "Student not found" });
+
+        // Try to find course details
+        let course = null;
+        if (user.courseId) {
+            course = await Course.findOne({ courseId: user.courseId });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                studentName: user.name,
+                courseId: course ? course._id : null, 
+                courseNumber: user.courseId,
+                courseTitle: course ? course.title : (user.courseName || "N/A"),
+                fees: course ? course.amount : 0
+            }
+        });
     } catch (err) {
         next(err);
     }
