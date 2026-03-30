@@ -42,7 +42,7 @@ exports.getAllNotifications = async (req, res, next) => {
  * POST /api/notifications/save-token
  * Public/User - Set/Update FCM/Expo token for the user
  */
-exports.saveToken = async (req, res, next) => {
+exports.saveToken = async (req, res, next) => {  
     try {
         const token = req.body.token || req.body.fcmToken;
         if (!token) return res.status(400).json({ success: false, message: "Token required" });
