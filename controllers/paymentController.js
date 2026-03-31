@@ -133,7 +133,6 @@ exports.getPaymentHistory = async (req, res, next) => {
         const transactions = payment.transactions.map(tx => ({
             _id: tx._id,
             paymentId: payment._id, 
-            amount: tx.amount, // Keep individual transaction amount
             date: tx.date,
             method: tx.method,
             type: tx.type || "Installment",
