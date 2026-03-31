@@ -173,12 +173,33 @@ exports.addManualPayment = async (req, res, next) => {
     try {
         const { userId, courseId, amount, method } = req.body;
         const collectedBy = req.user.id; 
+        
+        const numAmount = Number(amount);
 
-        // Normalize courseId: Mongoose fails if it's an empty string ""
-        const normalizedCourseId = (courseId && typeof courseId === 'string' && courseId.trim() !== '') ? courseId : null;
+        if (!userId || isNaN(numAmount) || !method) {
+            return res.status(400).json({ success: false, message: 'Please provide valid student, amount and method' });
+        }
 
-        if (!userId || !amount || !method) {
-            return res.status(400).json({ success: false, message: 'Please provide student, amount and method' });
+        const mongoose = require("mongoose");
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(400).json({ success: false, message: 'Invalid user ID format' });
+        }
+
+        // Normalize courseId
+        let normalizedCourseId = null;
+        if (courseId && typeof courseId === 'string' && courseId.trim() !== '') {
+            normalizedCourseId = courseId;
+        }
+
+        // If courseId is missing, attempt to fetch from user
+        if (!normalizedCourseId) {
+            const user = await User.findById(userId);
+            if (user && user.courseName) {
+                const foundCourse = await Course.findOne({ 
+                    $or: [{ title: user.courseName }, { name: user.courseName }] 
+                });
+                if (foundCourse) normalizedCourseId = foundCourse._id.toString();
+            }
         }
 
         let payment = await Payment.findOne({ userId });
@@ -186,7 +207,7 @@ exports.addManualPayment = async (req, res, next) => {
         if (!payment) {
             // First payment: Fetch course details for fees
             let courseAmount = 0;
-            if (normalizedCourseId) {
+            if (normalizedCourseId && mongoose.Types.ObjectId.isValid(normalizedCourseId)) {
                 const course = await Course.findById(normalizedCourseId);
                 if (course) courseAmount = course.amount;
             }
@@ -198,19 +219,19 @@ exports.addManualPayment = async (req, res, next) => {
 
             payment = new Payment({
                 userId,
-                courseId: normalizedCourseId,
+                courseId: normalizedCourseId || undefined, // Fallback to undefined so Mongoose validation trips rather than casting error if null
                 totalFees: courseAmount,
-                paidAmount: amount,
-                remainingAmount: Math.max(0, courseAmount - amount),
+                paidAmount: numAmount,
+                remainingAmount: Math.max(0, courseAmount - numAmount),
                 durationInDays: duration,
                 endDate,
-                transactions: [{ amount, method, collectedBy }],
+                transactions: [{ amount: numAmount, method, collectedBy }],
             });
         } else {
             // Subsequent payment
-            payment.paidAmount += amount;
+            payment.paidAmount += numAmount;
             payment.remainingAmount = Math.max(0, payment.totalFees - payment.paidAmount);
-            payment.transactions.push({ amount, method, collectedBy });
+            payment.transactions.push({ amount: numAmount, method, collectedBy });
             if (normalizedCourseId && !payment.courseId) {
                 payment.courseId = normalizedCourseId;
             }
@@ -226,6 +247,12 @@ exports.addManualPayment = async (req, res, next) => {
         await payment.save();
         res.json({ success: true, message: "Payment added successfully", data: payment });
     } catch (err) {
+        if (err.name === 'ValidationError') {
+            return res.status(400).json({ success: false, message: err.message });
+        }
+        if (err.name === 'CastError') {
+            return res.status(400).json({ success: false, message: 'Invalid ID format in request' });
+        }
         next(err);
     }
 };
