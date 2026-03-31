@@ -2,7 +2,7 @@ const Payment = require("../models/Payment");
 const User = require("../models/User");
 const Course = require("../models/Course");
 const PDFDocument = require("pdfkit");
-const { Parser } = require("json2csv");
+const ExcelJS = require("exceljs");
 
 /**
  * 🔹 STUDENT: Get Payment Dashboard
@@ -172,26 +172,36 @@ exports.downloadPayslip = async (req, res, next) => {
 exports.addManualPayment = async (req, res, next) => {
     try {
         const { userId, courseId, amount, method } = req.body;
-        const collectedBy = req.user.id; // Admin ID from protect middleare
+        const collectedBy = req.user.id; 
 
-        let payment = await Payment.findOne({ userId, courseId });
+        // Normalize courseId: Mongoose fails if it's an empty string ""
+        const normalizedCourseId = (courseId && typeof courseId === 'string' && courseId.trim() !== '') ? courseId : null;
+
+        if (!userId || !amount || !method) {
+            return res.status(400).json({ success: false, message: 'Please provide student, amount and method' });
+        }
+
+        let payment = await Payment.findOne({ userId });
 
         if (!payment) {
             // First payment: Fetch course details for fees
-            const course = await Course.findById(courseId);
-            if (!course) return res.status(404).json({ success: false, message: "Course not found" });
+            let courseAmount = 0;
+            if (normalizedCourseId) {
+                const course = await Course.findById(normalizedCourseId);
+                if (course) courseAmount = course.amount;
+            }
 
-            // Duration logic: Assume 90 days if not specified or fetch from course (if exists)
+            // Duration logic: 90 days
             const duration = 90;
             const endDate = new Date();
             endDate.setDate(endDate.getDate() + duration);
 
             payment = new Payment({
                 userId,
-                courseId,
-                totalFees: course.amount,
+                courseId: normalizedCourseId,
+                totalFees: courseAmount,
                 paidAmount: amount,
-                remainingAmount: course.amount - amount,
+                remainingAmount: Math.max(0, courseAmount - amount),
                 durationInDays: duration,
                 endDate,
                 transactions: [{ amount, method, collectedBy }],
@@ -199,14 +209,16 @@ exports.addManualPayment = async (req, res, next) => {
         } else {
             // Subsequent payment
             payment.paidAmount += amount;
-            payment.remainingAmount -= amount;
+            payment.remainingAmount = Math.max(0, payment.totalFees - payment.paidAmount);
             payment.transactions.push({ amount, method, collectedBy });
+            if (normalizedCourseId && !payment.courseId) {
+                payment.courseId = normalizedCourseId;
+            }
         }
 
         // Update Status
         if (payment.remainingAmount <= 0) {
             payment.status = "paid";
-            payment.remainingAmount = 0; // Fix negative if overpaid
         } else if (payment.paidAmount > 0) {
             payment.status = "partial";
         }
@@ -234,10 +246,14 @@ exports.getMonthlyReport = async (req, res, next) => {
             createdAt: { $gte: start, $lte: end },
         });
 
+        // Use Set to count unique students
+        const totalStudents = new Set(payments.map(p => p.userId.toString())).size;
+        const paidStudents = new Set(payments.filter(p => p.status === "paid").map(p => p.userId.toString())).size;
+        
         const report = {
-            totalStudents: payments.length,
-            paidStudents: payments.filter((p) => p.status === "paid").length,
-            unpaidStudents: payments.filter((p) => p.status === "pending").length,
+            totalStudents,
+            paidStudents,
+            unpaidStudents: totalStudents - paidStudents,
             totalCollection: payments.reduce((sum, p) => sum + p.paidAmount, 0),
         };
 
@@ -254,24 +270,41 @@ exports.getMonthlyReport = async (req, res, next) => {
 exports.downloadReport = async (req, res, next) => {
     try {
         const payments = await Payment.find()
-            .populate("userId", "name")
-            .populate("courseId", "title");
+            .populate("userId", "name email mobile")
+            .populate("courseId", "title courseId");
 
-        const data = payments.map((p) => ({
-            "Student Name": p.userId ? p.userId.name : "Unknown",
-            Course: p.courseId ? p.courseId.title : "Unknown",
-            "Paid Amount": p.paidAmount,
-            Remaining: p.remainingAmount,
-            Status: p.status,
-            "Last Transaction": p.transactions.length > 0 ? p.transactions[p.transactions.length - 1].date : "N/A",
-        }));
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Payments');
 
-        const json2csvParser = new Parser();
-        const csv = json2csvParser.parse(data);
+        worksheet.columns = [
+            { header: 'Student Name', key: 'name', width: 25 },
+            { header: 'Email', key: 'email', width: 25 },
+            { header: 'Course', key: 'course', width: 20 },
+            { header: 'Total Fees', key: 'total', width: 15 },
+            { header: 'Amount Paid', key: 'paid', width: 15 },
+            { header: 'Remaining', key: 'remaining', width: 15 },
+            { header: 'Status', key: 'status', width: 15 },
+            { header: 'Date', key: 'date', width: 20 }
+        ];
 
-        res.setHeader("Content-Type", "text/csv");
-        res.setHeader("Content-Disposition", "attachment; filename=payment_report.csv");
-        res.status(200).send(csv);
+        payments.forEach(p => {
+            worksheet.addRow({
+                name: p.userId ? p.userId.name : 'Unknown',
+                email: p.userId ? p.userId.email : 'N/A',
+                course: p.courseId ? p.courseId.title : 'N/A',
+                total: p.totalFees,
+                paid: p.paidAmount,
+                remaining: p.remainingAmount,
+                status: p.status,
+                date: p.createdAt ? p.createdAt.toLocaleDateString() : 'N/A'
+            });
+        });
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename=payment-report.xlsx');
+
+        await workbook.xlsx.write(res);
+        res.end();
     } catch (err) {
         next(err);
     }
@@ -283,23 +316,41 @@ exports.downloadReport = async (req, res, next) => {
  */
 exports.listPayments = async (req, res, next) => {
     try {
-        const { status, month } = req.query;
+        const { status, month, year } = req.query;
         let query = {};
 
-        if (status) query.status = status;
-        if (month) {
-            const year = new Date().getFullYear();
-            const start = new Date(year, month - 1, 1);
-            const end = new Date(year, month, 0, 23, 59, 59);
-            query.createdAt = { $gte: start, $lte: end };
+        if (status && status !== 'all') {
+            query.status = status;
+        }
+
+        if (month && year) {
+            const m = parseInt(month) - 1;
+            const y = parseInt(year);
+            query.createdAt = {
+                $gte: new Date(y, m, 1),
+                $lte: new Date(y, m + 1, 0, 23, 59, 59, 999)
+            };
         }
 
         const payments = await Payment.find(query)
             .populate("userId", "name email mobile")
-            .populate("courseId", "title")
             .sort({ createdAt: -1 });
 
-        res.json({ success: true, count: payments.length, data: payments });
+        // Map to expected frontend format
+        const formatted = payments.map(p => ({
+            _id: p._id,
+            name: p.userId?.name || 'Unknown',
+            // User model has courseName for offline students; 
+            // otherwise use a fallback or populate Course title
+            course: p.userId?.courseName || 'N/A',
+            paid: p.paidAmount || 0,
+            remaining: p.remainingAmount || 0,
+            status: p.status,
+            method: p.transactions.length > 0 ? p.transactions[p.transactions.length - 1].method : 'N/A',
+            date: p.createdAt
+        }));
+
+        res.json({ success: true, count: formatted.length, data: formatted });
     } catch (err) {
         next(err);
     }
