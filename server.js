@@ -16,6 +16,7 @@ app.use(express.json());
 app.use("/uploads", express.static("uploads"));
 
 // ── Routes ────────────────────────────────────────────────────────────────────
+app.use("/api/payments", require("./routes/payments"));
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/dashboard", require("./routes/dashboard"));
 app.use("/api/notifications", require("./routes/notifications"));
@@ -28,11 +29,10 @@ app.use("/api/upload", require("./routes/upload"));
 app.use("/api/leave", require("./routes/leave"));
 app.use("/api/tasks", require("./routes/task"));
 app.use("/api/users", require("./routes/users"));
-app.use("/api/payments", require("./routes/payments"));
 
 // ── Health Check ──────────────────────────────────────────────────────────────
 app.get("/", (req, res) => {
-    res.json({ success: true, message: "Student Portal API is running - Version 1.0.1 🚀" });
+    res.json({ success: true, message: "Student Portal API is running - Version 1.0.2 🚀" });
 });
 
 // ── 404 ───────────────────────────────────────────────────────────────────────
