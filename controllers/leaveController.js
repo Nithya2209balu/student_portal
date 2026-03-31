@@ -1,5 +1,7 @@
 const Leave = require("../models/Leave");
 const Notification = require("../models/Notification");
+const User = require("../models/User");
+const { sendPushNotifications } = require("../config/notifications");
 
 // ── Helper: strip timestamps from response ───────────────────────────────────
 const clean = (doc) => {

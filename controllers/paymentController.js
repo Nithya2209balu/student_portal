@@ -14,21 +14,51 @@ exports.getPaymentDashboard = async (req, res, next) => {
         const payment = await Payment.findOne({ userId }).sort({ createdAt: -1 });
 
         if (!payment) {
-            // New fallback: Fetch from User -> Course if no payment record exists yet
+            // New fallback: Fetch from User -> Course OR CourseCategory if no payment record exists yet
             const user = await User.findById(userId).select("courseId courseName");
-            if (user && user.courseId) {
-                const course = await Course.findOne({ courseId: user.courseId });
-                if (course) {
+            if (user) {
+                let totalFees = 0;
+                let courseName = user.courseName || "N/A";
+
+                // 1. Try lookup by courseId (Number) in Course collection
+                if (user.courseId) {
+                    const course = await Course.findOne({ courseId: user.courseId });
+                    if (course) {
+                        totalFees = course.amount;
+                        courseName = course.title || course.name || courseName;
+                    }
+                }
+
+                // 2. Fallback to Name-based lookup in Courses if fee still 0
+                if (totalFees === 0 && user.courseName) {
+                    const course = await Course.findOne({ 
+                        $or: [{ title: user.courseName }, { name: user.courseName }] 
+                    });
+                    if (course) {
+                        totalFees = course.amount;
+                    }
+                }
+
+                // 3. Fallback to Category-based lookup (many students are linked to category names)
+                if (totalFees === 0 && user.courseName) {
+                    const CourseCategory = require("../models/CourseCategory");
+                    const category = await CourseCategory.findOne({ name: user.courseName });
+                    if (category) {
+                        totalFees = category.fees || 0;
+                    }
+                }
+
+                if (totalFees > 0) {
                     return res.json({
                         success: true,
                         data: {
-                            totalFees: course.amount,
+                            totalFees,
                             paidAmount: 0,
-                            remainingAmount: course.amount,
+                            remainingAmount: totalFees,
                             durationInDays: 0,
                             daysLeft: 0,
                             status: "pending",
-                            courseName: course.title
+                            courseName
                         },
                     });
                 }
@@ -286,20 +316,51 @@ exports.getStudentCourseInfo = async (req, res, next) => {
 
         if (!user) return res.status(404).json({ success: false, message: "Student not found" });
 
-        // Try to find course details
-        let course = null;
+        let fees = 0;
+        let courseTitle = user.courseName || "N/A";
+        let courseObjectId = null;
+
+        // 1. Try lookup by courseId (Number) in Course collection
         if (user.courseId) {
-            course = await Course.findOne({ courseId: user.courseId });
+            const course = await Course.findOne({ courseId: user.courseId });
+            if (course) {
+                fees = course.amount;
+                courseTitle = course.title || course.name || courseTitle;
+                courseObjectId = course._id;
+            }
+        }
+
+        // 2. Fallback to Name-based lookup in Courses if fee still 0
+        if (fees === 0 && user.courseName) {
+            const course = await Course.findOne({ 
+                $or: [{ title: user.courseName }, { name: user.courseName }] 
+            });
+            if (course) {
+                fees = course.amount;
+                courseObjectId = course._id;
+                courseTitle = course.title || course.name;
+            }
+        }
+
+        // 3. Fallback to Category-based lookup
+        if (fees === 0 && user.courseName) {
+            const CourseCategory = require("../models/CourseCategory");
+            const category = await CourseCategory.findOne({ name: user.courseName });
+            if (category) {
+                fees = category.fees || 0;
+                courseTitle = category.name;
+                // Note: We don't have a courseObjectId here, so we might use category _id or leave null
+            }
         }
 
         res.json({
             success: true,
             data: {
                 studentName: user.name,
-                courseId: course ? course._id : null, 
+                courseId: courseObjectId, 
                 courseNumber: user.courseId,
-                courseTitle: course ? course.title : (user.courseName || "N/A"),
-                fees: course ? course.amount : 0
+                courseTitle,
+                fees
             }
         });
     } catch (err) {
