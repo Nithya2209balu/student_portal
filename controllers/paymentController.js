@@ -88,24 +88,62 @@ exports.getPaymentDashboard = async (req, res, next) => {
 exports.getPaymentHistory = async (req, res, next) => {
     try {
         const { userId } = req.params;
-        const payment = await Payment.findOne({ userId }).sort({ createdAt: -1 });
+        const payment = await Payment.findOne({ userId })
+            .populate("courseId", "title")
+            .sort({ createdAt: -1 });
 
         if (!payment) return res.json({ success: true, transactions: [] });
+
+        // Self-heal: If totalFees is 0 or courseName is generic, try to find the real values
+        let dynamicFees = payment.totalFees;
+        let dynamicCourseTitle = payment.courseId?.title || "Course";
+
+        if (dynamicFees === 0 || dynamicCourseTitle === "Course") {
+            const user = await User.findById(userId).select("courseName courseId");
+            if (user) {
+                if (dynamicCourseTitle === "Course") dynamicCourseTitle = user.courseName || dynamicCourseTitle;
+                
+                // 1. Try lookup by courseId (Number)
+                let course = null;
+                if (user.courseId) {
+                    course = await Course.findOne({ courseId: user.courseId });
+                }
+
+                // 2. Fallback to Name-based lookup
+                if (!course && user.courseName) {
+                    course = await Course.findOne({ 
+                        $or: [{ title: user.courseName }, { name: user.courseName }] 
+                    });
+                }
+
+                if (course) {
+                    if (dynamicFees === 0) dynamicFees = course.amount;
+                    if (!dynamicCourseTitle || dynamicCourseTitle === "Course") dynamicCourseTitle = course.title || course.name;
+                } else if (user.courseName) {
+                    // 3. Fallback to Category-based lookup (crucial for some students)
+                    const CourseCategory = require("../models/CourseCategory");
+                    const category = await CourseCategory.findOne({ name: user.courseName });
+                    if (category) {
+                        if (dynamicFees === 0) dynamicFees = category.fees || 0;
+                    }
+                }
+            }
+        }
 
         const transactions = payment.transactions.map(tx => ({
             _id: tx._id,
             paymentId: payment._id, 
-            amount: tx.amount,
-            date: tx.date, // ISO string will include time
+            amount: tx.amount, // Keep individual transaction amount
+            date: tx.date,
             method: tx.method,
             type: tx.type || "Installment",
             receiptId: tx.receiptId || `REC-${Math.floor(1000 + Math.random() * 9000)}`,
             status: tx.status || "success",
-            courseName: payment.courseId?.title || "Course",
-            // Requirements: include total, paid, and pending in history
-            totalAmount: payment.totalFees,
+            courseName: dynamicCourseTitle,
+            totalAmount: dynamicFees,
             paidAmount: payment.paidAmount,
-            pendingAmount: payment.remainingAmount
+            pendingAmount: Math.max(0, dynamicFees - payment.paidAmount),
+            balanceAmount: Math.max(0, dynamicFees - payment.paidAmount) // Alias for compatibility
         }));
 
         res.json({
