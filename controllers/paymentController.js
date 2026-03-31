@@ -306,7 +306,7 @@ exports.listPayments = async (req, res, next) => {
 };
 
 /**
- * 🔹 ADMIN: Get Student Course & Fees (for form pre-fill)
+ * 🔹 ADMIN: Get Student Course & Fees + Payment Summary (for form pre-fill)
  * GET /api/payments/admin/student-course/:userId
  */
 exports.getStudentCourseInfo = async (req, res, next) => {
@@ -332,8 +332,8 @@ exports.getStudentCourseInfo = async (req, res, next) => {
 
         // 2. Fallback to Name-based lookup in Courses if fee still 0
         if (fees === 0 && user.courseName) {
-            const course = await Course.findOne({ 
-                $or: [{ title: user.courseName }, { name: user.courseName }] 
+            const course = await Course.findOne({
+                $or: [{ title: user.courseName }, { name: user.courseName }],
             });
             if (course) {
                 fees = course.amount;
@@ -349,19 +349,25 @@ exports.getStudentCourseInfo = async (req, res, next) => {
             if (category) {
                 fees = category.fees || 0;
                 courseTitle = category.name;
-                // Note: We don't have a courseObjectId here, so we might use category _id or leave null
             }
         }
+
+        // 4. Fetch existing payment record to get paidAmount & remainingAmount
+        const existingPayment = await Payment.findOne({ userId }).sort({ createdAt: -1 });
+        const paidAmount      = existingPayment ? existingPayment.paidAmount      : 0;
+        const remainingAmount = existingPayment ? existingPayment.remainingAmount  : fees;
 
         res.json({
             success: true,
             data: {
                 studentName: user.name,
-                courseId: courseObjectId, 
+                courseId: courseObjectId,
                 courseNumber: user.courseId,
                 courseTitle,
-                fees
-            }
+                fees,
+                paidAmount,
+                remainingAmount,
+            },
         });
     } catch (err) {
         next(err);
