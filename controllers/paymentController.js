@@ -516,9 +516,12 @@ exports.listPayments = async (req, res, next) => {
         // 1. Build Payment Query for filtering
         let paymentQuery = {};
         if (userId) paymentQuery.userId = userId;
+        
         if (month && year) {
-            const start = new Date(year, month - 1, 1);
-            const end = new Date(year, month, 0, 23, 59, 59);
+            const m = parseInt(month) || new Date().getMonth() + 1;
+            const y = parseInt(year) || new Date().getFullYear();
+            const start = new Date(y, m - 1, 1);
+            const end = new Date(y, m, 0, 23, 59, 59);
             paymentQuery.createdAt = { $gte: start, $lte: end };
         } else if (startDate && endDate) {
             paymentQuery.createdAt = { $gte: new Date(startDate), $lte: new Date(endDate) };
