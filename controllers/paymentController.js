@@ -11,40 +11,22 @@ const ExcelJS = require("exceljs");
 exports.getPaymentDashboard = async (req, res, next) => {
     try {
         const { userId } = req.params;
-        const payment = await Payment.findOne({ userId }).sort({ createdAt: -1 });
+        const payment = await Payment.findOne({ userId })
+            .populate("courseId", "title isActive")
+            .sort({ createdAt: -1 });
 
         if (!payment) {
-            // New fallback: Fetch from User -> Course OR CourseCategory if no payment record exists yet
+            // New fallback: Fetch from User -> Course
             const user = await User.findById(userId).select("courseId courseName");
             if (user) {
                 let totalFees = 0;
                 let courseName = user.courseName || "N/A";
 
-                // 1. Try lookup by courseId (Number) in Course collection
                 if (user.courseId) {
                     const course = await Course.findOne({ courseId: user.courseId });
                     if (course) {
                         totalFees = course.amount;
                         courseName = course.title || course.name || courseName;
-                    }
-                }
-
-                // 2. Fallback to Name-based lookup in Courses if fee still 0
-                if (totalFees === 0 && user.courseName) {
-                    const course = await Course.findOne({ 
-                        $or: [{ title: user.courseName }, { name: user.courseName }] 
-                    });
-                    if (course) {
-                        totalFees = course.amount;
-                    }
-                }
-
-                // 3. Fallback to Category-based lookup (many students are linked to category names)
-                if (totalFees === 0 && user.courseName) {
-                    const CourseCategory = require("../models/CourseCategory");
-                    const category = await CourseCategory.findOne({ name: user.courseName });
-                    if (category) {
-                        totalFees = category.fees || 0;
                     }
                 }
 
@@ -55,10 +37,10 @@ exports.getPaymentDashboard = async (req, res, next) => {
                             totalFees,
                             paidAmount: 0,
                             remainingAmount: totalFees,
-                            durationInDays: 0,
-                            daysLeft: 0,
                             status: "pending",
-                            courseName
+                            courseName,
+                            courseStatus: "active",
+                            nextInstallmentDate: null
                         },
                     });
                 }
@@ -70,9 +52,8 @@ exports.getPaymentDashboard = async (req, res, next) => {
                     totalFees: 0,
                     paidAmount: 0,
                     remainingAmount: 0,
-                    durationInDays: 0,
-                    daysLeft: 0,
                     status: "pending",
+                    courseStatus: "inactive"
                 },
             });
         }
@@ -87,9 +68,12 @@ exports.getPaymentDashboard = async (req, res, next) => {
                 totalFees: payment.totalFees,
                 paidAmount: payment.paidAmount,
                 remainingAmount: payment.remainingAmount,
-                durationInDays: payment.durationInDays,
                 daysLeft,
                 status: payment.status,
+                courseName: payment.courseId?.title || "N/A",
+                courseStatus: payment.courseId?.isActive ? "active" : "inactive",
+                nextInstallmentDate: payment.nextInstallmentDate || null,
+                paymentDeadline: payment.nextInstallmentDate || payment.endDate // Explicitly mapping deadline
             },
         });
     } catch (err) {
@@ -106,10 +90,92 @@ exports.getPaymentHistory = async (req, res, next) => {
         const { userId } = req.params;
         const payment = await Payment.findOne({ userId }).sort({ createdAt: -1 });
 
+        if (!payment) return res.json({ success: true, transactions: [] });
+
+        const transactions = payment.transactions.map(tx => ({
+            _id: tx._id,
+            paymentId: payment._id, 
+            amount: tx.amount,
+            date: tx.date, // ISO string will include time
+            method: tx.method,
+            type: tx.type || "Installment",
+            receiptId: tx.receiptId || `REC-${Math.floor(1000 + Math.random() * 9000)}`,
+            status: tx.status || "success",
+            courseName: payment.courseId?.title || "Course",
+            // Requirements: include total, paid, and pending in history
+            totalAmount: payment.totalFees,
+            paidAmount: payment.paidAmount,
+            pendingAmount: payment.remainingAmount
+        }));
+
         res.json({
             success: true,
-            transactions: payment ? payment.transactions : [],
+            transactions: transactions,
         });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * 🔹 STUDENT: Download Single Transaction Receipt (PDF)
+ * GET /api/payments/receipt/:paymentId/:transactionId
+ */
+exports.downloadSingleReceipt = async (req, res, next) => {
+    try {
+        const { paymentId, transactionId } = req.params;
+        const payment = await Payment.findById(paymentId)
+            .populate("userId", "name email")
+            .populate("courseId", "title");
+
+        if (!payment) return res.status(404).json({ success: false, message: "Payment record not found" });
+
+        const tx = payment.transactions.id(transactionId);
+        if (!tx) return res.status(404).json({ success: false, message: "Transaction not found" });
+
+        const doc = new PDFDocument({ margin: 50 });
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename=receipt_${tx.receiptId || transactionId}.pdf`);
+
+        doc.pipe(res);
+
+        // Header Style
+        doc.fillColor("#444444").fontSize(20).text("PAYMENT RECEIPT", { align: "center" });
+        doc.moveDown();
+
+        // Receipt Details
+        doc.fontSize(10)
+           .text(`Receipt ID: ${tx.receiptId || "N/A"}`, { align: "right" })
+           .text(`Date: ${tx.date.toLocaleDateString()}`, { align: "right" });
+
+        doc.moveDown();
+        doc.fontSize(12).fillColor("#000000")
+           .text(`Student Name: ${payment.userId.name}`)
+           .text(`Email: ${payment.userId.email}`)
+           .text(`Course: ${payment.courseId?.title || "N/A"}`);
+
+        doc.moveDown();
+        doc.rect(50, doc.y, 500, 1).fill("#EEEEEE");
+        doc.moveDown();
+
+        // Transaction Info
+        doc.fontSize(14).fillColor("#2E7D32").text(`${tx.type || "Installment Payment"}`);
+        doc.moveDown(0.5);
+        
+        doc.fontSize(12).fillColor("#000000")
+           .text(`Amount Paid: ₹${tx.amount}`)
+           .text(`Payment Mode: ${tx.method?.toUpperCase() || "CASH"}`)
+           .text(`Status: ${tx.status?.toUpperCase() || "SUCCESS"}`);
+
+        doc.moveDown();
+        doc.rect(50, doc.y, 500, 1).fill("#EEEEEE");
+        doc.moveDown();
+
+        // Footer
+        doc.fontSize(10).fillColor("#777777")
+           .text("Thank you for your payment!", { align: "center" });
+
+        doc.end();
     } catch (err) {
         next(err);
     }
@@ -171,7 +237,7 @@ exports.downloadPayslip = async (req, res, next) => {
  */
 exports.addManualPayment = async (req, res, next) => {
     try {
-        const { userId, courseId, amount, method } = req.body;
+        const { userId, courseId, amount, method, type } = req.body;
         const collectedBy = req.user.id; 
         
         const numAmount = Number(amount);
@@ -185,32 +251,22 @@ exports.addManualPayment = async (req, res, next) => {
             return res.status(400).json({ success: false, message: 'Invalid user ID format' });
         }
 
-        // Normalize courseId
-        let normalizedCourseId = null;
-        if (courseId && typeof courseId === 'string' && courseId.trim() !== '') {
-            normalizedCourseId = courseId;
-        }
-
-        // If courseId is missing, attempt to fetch from user
-        if (!normalizedCourseId) {
-            const user = await User.findById(userId);
-            if (user && user.courseName) {
-                const foundCourse = await Course.findOne({ 
-                    $or: [{ title: user.courseName }, { name: user.courseName }] 
-                });
-                if (foundCourse) normalizedCourseId = foundCourse._id.toString();
-            }
-        }
+        // Generate unique receipt ID
+        const receiptId = `REC-${Math.floor(1000 + Math.random() * 9000)}`;
 
         let payment = await Payment.findOne({ userId });
 
         if (!payment) {
             // First payment: Fetch course details for fees
             let courseAmount = 0;
-            if (normalizedCourseId && mongoose.Types.ObjectId.isValid(normalizedCourseId)) {
-                const course = await Course.findById(normalizedCourseId);
+            if (courseId && mongoose.Types.ObjectId.isValid(courseId)) {
+                const course = await Course.findById(courseId);
                 if (course) courseAmount = course.amount;
             }
+
+            // Next Installment Date: Default to 30 days from now
+            const nextInstallment = new Date();
+            nextInstallment.setDate(nextInstallment.getDate() + 30);
 
             // Duration logic: 90 days
             const duration = 90;
@@ -219,22 +275,40 @@ exports.addManualPayment = async (req, res, next) => {
 
             payment = new Payment({
                 userId,
-                courseId: normalizedCourseId || undefined, // Fallback to undefined so Mongoose validation trips rather than casting error if null
+                courseId: courseId || undefined,
                 totalFees: courseAmount,
                 paidAmount: numAmount,
                 remainingAmount: Math.max(0, courseAmount - numAmount),
                 durationInDays: duration,
                 endDate,
-                transactions: [{ amount: numAmount, method, collectedBy }],
+                nextInstallmentDate: nextInstallment,
+                transactions: [{ 
+                    amount: numAmount, 
+                    method, 
+                    collectedBy,
+                    type: type || "Admission Fee",
+                    receiptId,
+                    status: "success"
+                }],
             });
         } else {
             // Subsequent payment
             payment.paidAmount += numAmount;
             payment.remainingAmount = Math.max(0, payment.totalFees - payment.paidAmount);
-            payment.transactions.push({ amount: numAmount, method, collectedBy });
-            if (normalizedCourseId && !payment.courseId) {
-                payment.courseId = normalizedCourseId;
-            }
+            
+            // Update next installment date (+30 days from previous)
+            const nextInstallment = new Date();
+            nextInstallment.setDate(nextInstallment.getDate() + 30);
+            payment.nextInstallmentDate = nextInstallment;
+
+            payment.transactions.push({ 
+                amount: numAmount, 
+                method, 
+                collectedBy,
+                type: type || `Installment ${payment.transactions.length}`,
+                receiptId,
+                status: "success"
+            });
         }
 
         // Update Status
@@ -263,15 +337,19 @@ exports.addManualPayment = async (req, res, next) => {
  */
 exports.getMonthlyReport = async (req, res, next) => {
     try {
-        const month = parseInt(req.query.month) || new Date().getMonth() + 1;
-        const year = parseInt(req.query.year) || new Date().getFullYear();
+        const { month, year, startDate, endDate, userId } = req.query;
+        let query = {};
+        if (userId) query.userId = userId;
 
-        const start = new Date(year, month - 1, 1);
-        const end = new Date(year, month, 0, 23, 59, 59);
+        if (month && year) {
+            const start = new Date(year, month - 1, 1);
+            const end = new Date(year, month, 0, 23, 59, 59);
+            query.createdAt = { $gte: start, $lte: end };
+        } else if (startDate && endDate) {
+            query.createdAt = { $gte: new Date(startDate), $lte: new Date(endDate) };
+        }
 
-        const payments = await Payment.find({
-            createdAt: { $gte: start, $lte: end },
-        });
+        const payments = await Payment.find(query);
 
         // Use Set to count unique students
         const totalStudents = new Set(payments.map(p => p.userId.toString())).size;
@@ -296,7 +374,21 @@ exports.getMonthlyReport = async (req, res, next) => {
  */
 exports.downloadReport = async (req, res, next) => {
     try {
-        const payments = await Payment.find()
+        const { status, month, year, startDate, endDate, userId } = req.query;
+
+        let query = {};
+        if (status && status !== "all") query.status = status;
+        if (userId) query.userId = userId;
+
+        if (month && year) {
+            const start = new Date(year, month - 1, 1);
+            const end = new Date(year, month, 0);
+            query.createdAt = { $gte: start, $lte: end };
+        } else if (startDate && endDate) {
+            query.createdAt = { $gte: new Date(startDate), $lte: new Date(endDate) };
+        }
+
+        const payments = await Payment.find(query)
             .populate("userId", "name email mobile")
             .populate("courseId", "title courseId");
 
@@ -367,9 +459,8 @@ exports.listPayments = async (req, res, next) => {
         const formatted = payments.map(p => ({
             _id: p._id,
             name: p.userId?.name || 'Unknown',
-            // User model has courseName for offline students; 
-            // otherwise use a fallback or populate Course title
             course: p.userId?.courseName || 'N/A',
+            total: p.totalFees || 0, // Requirement: total payment
             paid: p.paidAmount || 0,
             remaining: p.remainingAmount || 0,
             status: p.status,

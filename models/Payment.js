@@ -10,6 +10,7 @@ const paymentSchema = new mongoose.Schema(
         durationInDays: { type: Number, required: true },
         startDate: { type: Date, default: Date.now },
         endDate: { type: Date, required: true },
+        nextInstallmentDate: { type: Date },
         status: {
             type: String,
             enum: ["pending", "partial", "paid"],
@@ -19,7 +20,10 @@ const paymentSchema = new mongoose.Schema(
             {
                 amount: { type: Number, required: true },
                 date: { type: Date, default: Date.now },
-                method: { type: String, enum: ["cash", "upi", "card"], required: true },
+                method: { type: String, enum: ["cash", "upi", "card", "online"], default: "cash" },
+                type: { type: String, default: "Installment" }, // e.g. "Admission Fee", "Installment 1"
+                receiptId: { type: String }, // e.g. "REC-9921"
+                status: { type: String, default: "success" },
                 collectedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // admin
             },
         ],

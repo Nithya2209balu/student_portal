@@ -9,6 +9,7 @@ const {
     downloadReport,
     listPayments,
     getStudentCourseInfo,
+    downloadSingleReceipt,
 } = require("../controllers/paymentController");
 const { protect, isAdmin } = require("../middlewares/auth");
 
@@ -23,6 +24,7 @@ const hrOnly = (req, res, next) => {
 router.get("/student/:userId", protect, getPaymentDashboard);
 router.get("/history/:userId", protect, getPaymentHistory);
 router.get("/payslip/:userId", protect, downloadPayslip);
+router.get("/receipt/:paymentId/:transactionId", protect, downloadSingleReceipt);
 
 // 🔹 Admin/HR Routes
 router.post("/admin/add", protect, hrOnly, addManualPayment);
