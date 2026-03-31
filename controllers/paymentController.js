@@ -511,17 +511,34 @@ exports.downloadReport = async (req, res, next) => {
  */
 exports.listPayments = async (req, res, next) => {
     try {
-        const { status, month, year } = req.query;
+        const { status, month, year, startDate, endDate, userId } = req.query;
         
-        // 1. Fetch ALL students
-        // We start with the User model to ensure we get students even without payment records
-        let userQuery = { role: "student" };
-        const students = await User.find(userQuery).select("name email mobile courseName courseId");
+        // 1. Build Payment Query for filtering
+        let paymentQuery = {};
+        if (userId) paymentQuery.userId = userId;
+        if (month && year) {
+            const start = new Date(year, month - 1, 1);
+            const end = new Date(year, month, 0, 23, 59, 59);
+            paymentQuery.createdAt = { $gte: start, $lte: end };
+        } else if (startDate && endDate) {
+            paymentQuery.createdAt = { $gte: new Date(startDate), $lte: new Date(endDate) };
+        }
 
-        // 2. Fetch all payment records for these students
+        // 2. Fetch students (all if no date filter, otherwise just relevant ones)
+        let students;
+        if (Object.keys(paymentQuery).length === 0) {
+            students = await User.find({ role: "student" }).select("name email mobile courseName courseId createdAt");
+        } else {
+            // Find students associated with these filtered payments
+            const filteredPayments = await Payment.find(paymentQuery).select("userId");
+            const studentIds = filteredPayments.map(p => p.userId);
+            students = await User.find({ _id: { $in: studentIds } }).select("name email mobile courseName courseId createdAt");
+        }
+
+        // 3. Fetch all payment records for context
         const payments = await Payment.find().populate("courseId", "title");
 
-        // 3. Combine and Self-Heal
+        // 4. Combine and Self-Heal
         const formatted = await Promise.all(students.map(async (student) => {
             const payment = payments.find(p => p.userId.toString() === student._id.toString());
             
@@ -530,20 +547,18 @@ exports.listPayments = async (req, res, next) => {
             let courseName = payment?.courseId?.title || student.courseName || "N/A";
             let duration = payment?.durationInDays || 90;
             
-            // Self-heal if missing data or no payment record yet
+            // Self-heal logic
             if (total === 0 || courseName === "N/A") {
                 if (courseName === "N/A") courseName = student.courseName || courseName;
-                
                 const Course = require("../models/Course");
                 let foundCourse = null;
                 if (student.courseId) foundCourse = await Course.findOne({ courseId: student.courseId });
                 if (!foundCourse && student.courseName) {
                     foundCourse = await Course.findOne({ $or: [{ title: student.courseName }, { name: student.courseName }] });
                 }
-
                 if (foundCourse) {
                     if (total === 0) total = foundCourse.amount;
-                    if (courseName === "N/A" || !courseName) courseName = foundCourse.title || foundCourse.name;
+                    if (!courseName || courseName === "N/A") courseName = foundCourse.title || foundCourse.name;
                 } else if (student.courseName) {
                     const CourseCategory = require("../models/CourseCategory");
                     const category = await CourseCategory.findOne({ name: student.courseName });
@@ -552,8 +567,6 @@ exports.listPayments = async (req, res, next) => {
             }
 
             const remaining = Math.max(0, total - paid);
-            
-            // Determine Status
             let displayStatus = payment?.status || "pending";
             if (total > 0) {
                 if (remaining <= 0) displayStatus = "paid";
@@ -561,7 +574,7 @@ exports.listPayments = async (req, res, next) => {
                 else displayStatus = "pending";
             }
 
-            // Optional Filtering by Status
+            // Filtering by Status
             if (status && status !== "all" && displayStatus !== status) return null;
 
             return {
@@ -582,8 +595,7 @@ exports.listPayments = async (req, res, next) => {
             };
         }));
 
-        // Filter out nulls from status filtering
-        const finalData = formatted.filter(item => item !== null);
+        const finalData = formatted.filter(item => item !== null).sort((a, b) => new Date(b.date) - new Date(a.date));
 
         res.json({ success: true, count: finalData.length, data: finalData });
     } catch (err) {
