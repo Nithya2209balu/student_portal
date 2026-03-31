@@ -512,80 +512,80 @@ exports.downloadReport = async (req, res, next) => {
 exports.listPayments = async (req, res, next) => {
     try {
         const { status, month, year } = req.query;
-        let query = {};
+        
+        // 1. Fetch ALL students
+        // We start with the User model to ensure we get students even without payment records
+        let userQuery = { role: "student" };
+        const students = await User.find(userQuery).select("name email mobile courseName courseId");
 
-        if (status && status !== 'all') {
-            query.status = status;
-        }
+        // 2. Fetch all payment records for these students
+        const payments = await Payment.find().populate("courseId", "title");
 
-        if (month && year) {
-            const m = parseInt(month) - 1;
-            const y = parseInt(year);
-            query.createdAt = {
-                $gte: new Date(y, m, 1),
-                $lte: new Date(y, m + 1, 0, 23, 59, 59, 999)
-            };
-        }
-
-        const payments = await Payment.find(query)
-            .populate("userId", "name email mobile courseName courseId")
-            .populate("courseId", "title")
-            .sort({ createdAt: -1 });
-
-        // Map to expected frontend format with Self-Healing logic
-        const formatted = await Promise.all(payments.map(async (p) => {
-            let total = p.totalFees || 0;
-            let courseName = p.courseId?.title || p.userId?.courseName || "N/A";
-
-            // Self-heal if data is missing
+        // 3. Combine and Self-Heal
+        const formatted = await Promise.all(students.map(async (student) => {
+            const payment = payments.find(p => p.userId.toString() === student._id.toString());
+            
+            let total = payment?.totalFees || 0;
+            let paid = payment?.paidAmount || 0;
+            let courseName = payment?.courseId?.title || student.courseName || "N/A";
+            let duration = payment?.durationInDays || 90;
+            
+            // Self-heal if missing data or no payment record yet
             if (total === 0 || courseName === "N/A") {
+                if (courseName === "N/A") courseName = student.courseName || courseName;
+                
                 const Course = require("../models/Course");
-                const user = p.userId;
-                if (user) {
-                    if (courseName === "N/A") courseName = user.courseName || courseName;
-                    
-                    let foundCourse = null;
-                    if (user.courseId) foundCourse = await Course.findOne({ courseId: user.courseId });
-                    if (!foundCourse && user.courseName) {
-                        foundCourse = await Course.findOne({ $or: [{ title: user.courseName }, { name: user.courseName }] });
-                    }
+                let foundCourse = null;
+                if (student.courseId) foundCourse = await Course.findOne({ courseId: student.courseId });
+                if (!foundCourse && student.courseName) {
+                    foundCourse = await Course.findOne({ $or: [{ title: student.courseName }, { name: student.courseName }] });
+                }
 
-                    if (foundCourse) {
-                        if (total === 0) total = foundCourse.amount;
-                        if (courseName === "N/A" || !courseName) courseName = foundCourse.title || foundCourse.name;
-                    } else if (user.courseName) {
-                        const CourseCategory = require("../models/CourseCategory");
-                        const category = await CourseCategory.findOne({ name: user.courseName });
-                        if (category && total === 0) total = category.fees || 0;
-                    }
+                if (foundCourse) {
+                    if (total === 0) total = foundCourse.amount;
+                    if (courseName === "N/A" || !courseName) courseName = foundCourse.title || foundCourse.name;
+                } else if (student.courseName) {
+                    const CourseCategory = require("../models/CourseCategory");
+                    const category = await CourseCategory.findOne({ name: student.courseName });
+                    if (category && total === 0) total = category.fees || 0;
                 }
             }
 
-            const paid = p.paidAmount || 0;
             const remaining = Math.max(0, total - paid);
             
-            // Recalculate status for UI if total was 0
-            let displayStatus = p.status;
-            if (p.totalFees === 0 && total > 0) {
+            // Determine Status
+            let displayStatus = payment?.status || "pending";
+            if (total > 0) {
                 if (remaining <= 0) displayStatus = "paid";
                 else if (paid > 0) displayStatus = "partial";
                 else displayStatus = "pending";
             }
 
+            // Optional Filtering by Status
+            if (status && status !== "all" && displayStatus !== status) return null;
+
             return {
-                _id: p._id,
-                name: p.userId?.name || 'Unknown',
+                _id: student._id,
+                paymentId: payment?._id || null,
+                name: student.name,
+                email: student.email,
+                mobile: student.mobile,
                 course: courseName,
+                duration: duration,
+                fees: total,
                 total: total,
                 paid: paid,
                 remaining: remaining,
                 status: displayStatus,
-                method: p.transactions.length > 0 ? p.transactions[p.transactions.length - 1].method : 'N/A',
-                date: p.createdAt
+                method: payment?.transactions?.length > 0 ? payment.transactions[payment.transactions.length - 1].method : 'N/A',
+                date: payment?.createdAt || student.createdAt
             };
         }));
 
-        res.json({ success: true, count: formatted.length, data: formatted });
+        // Filter out nulls from status filtering
+        const finalData = formatted.filter(item => item !== null);
+
+        res.json({ success: true, count: finalData.length, data: finalData });
     } catch (err) {
         next(err);
     }
