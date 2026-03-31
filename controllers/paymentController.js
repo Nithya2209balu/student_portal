@@ -438,8 +438,8 @@ exports.downloadReport = async (req, res, next) => {
         }
 
         const payments = await Payment.find(query)
-            .populate("userId", "name email mobile")
-            .populate("courseId", "title courseId");
+            .populate("userId", "name email mobile courseName courseId")
+            .populate("courseId", "title");
 
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Payments');
@@ -455,18 +455,45 @@ exports.downloadReport = async (req, res, next) => {
             { header: 'Date', key: 'date', width: 20 }
         ];
 
-        payments.forEach(p => {
+        for (const p of payments) {
+            let total = p.totalFees || 0;
+            let courseName = p.courseId?.title || p.userId?.courseName || "N/A";
+
+            if (total === 0 || courseName === "N/A") {
+                const user = p.userId;
+                if (user) {
+                    if (courseName === "N/A") courseName = user.courseName || courseName;
+                    const Course = require("../models/Course");
+                    let foundCourse = null;
+                    if (user.courseId) foundCourse = await Course.findOne({ courseId: user.courseId });
+                    if (!foundCourse && user.courseName) {
+                        foundCourse = await Course.findOne({ $or: [{ title: user.courseName }, { name: user.courseName }] });
+                    }
+                    if (foundCourse) {
+                        if (total === 0) total = foundCourse.amount;
+                        if (courseName === "N/A" || !courseName) courseName = foundCourse.title || foundCourse.name;
+                    } else if (user.courseName) {
+                        const CourseCategory = require("../models/CourseCategory");
+                        const category = await CourseCategory.findOne({ name: user.courseName });
+                        if (category && total === 0) total = category.fees || 0;
+                    }
+                }
+            }
+
+            const paid = p.paidAmount || 0;
+            const remaining = Math.max(0, total - paid);
+
             worksheet.addRow({
                 name: p.userId ? p.userId.name : 'Unknown',
                 email: p.userId ? p.userId.email : 'N/A',
-                course: p.courseId ? p.courseId.title : 'N/A',
-                total: p.totalFees,
-                paid: p.paidAmount,
-                remaining: p.remainingAmount,
+                course: courseName,
+                total: total,
+                paid: paid,
+                remaining: remaining,
                 status: p.status,
                 date: p.createdAt ? p.createdAt.toLocaleDateString() : 'N/A'
             });
-        });
+        }
 
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', 'attachment; filename=payment-report.xlsx');
@@ -501,20 +528,61 @@ exports.listPayments = async (req, res, next) => {
         }
 
         const payments = await Payment.find(query)
-            .populate("userId", "name email mobile")
+            .populate("userId", "name email mobile courseName courseId")
+            .populate("courseId", "title")
             .sort({ createdAt: -1 });
 
-        // Map to expected frontend format
-        const formatted = payments.map(p => ({
-            _id: p._id,
-            name: p.userId?.name || 'Unknown',
-            course: p.userId?.courseName || 'N/A',
-            total: p.totalFees || 0, // Requirement: total payment
-            paid: p.paidAmount || 0,
-            remaining: p.remainingAmount || 0,
-            status: p.status,
-            method: p.transactions.length > 0 ? p.transactions[p.transactions.length - 1].method : 'N/A',
-            date: p.createdAt
+        // Map to expected frontend format with Self-Healing logic
+        const formatted = await Promise.all(payments.map(async (p) => {
+            let total = p.totalFees || 0;
+            let courseName = p.courseId?.title || p.userId?.courseName || "N/A";
+
+            // Self-heal if data is missing
+            if (total === 0 || courseName === "N/A") {
+                const Course = require("../models/Course");
+                const user = p.userId;
+                if (user) {
+                    if (courseName === "N/A") courseName = user.courseName || courseName;
+                    
+                    let foundCourse = null;
+                    if (user.courseId) foundCourse = await Course.findOne({ courseId: user.courseId });
+                    if (!foundCourse && user.courseName) {
+                        foundCourse = await Course.findOne({ $or: [{ title: user.courseName }, { name: user.courseName }] });
+                    }
+
+                    if (foundCourse) {
+                        if (total === 0) total = foundCourse.amount;
+                        if (courseName === "N/A" || !courseName) courseName = foundCourse.title || foundCourse.name;
+                    } else if (user.courseName) {
+                        const CourseCategory = require("../models/CourseCategory");
+                        const category = await CourseCategory.findOne({ name: user.courseName });
+                        if (category && total === 0) total = category.fees || 0;
+                    }
+                }
+            }
+
+            const paid = p.paidAmount || 0;
+            const remaining = Math.max(0, total - paid);
+            
+            // Recalculate status for UI if total was 0
+            let displayStatus = p.status;
+            if (p.totalFees === 0 && total > 0) {
+                if (remaining <= 0) displayStatus = "paid";
+                else if (paid > 0) displayStatus = "partial";
+                else displayStatus = "pending";
+            }
+
+            return {
+                _id: p._id,
+                name: p.userId?.name || 'Unknown',
+                course: courseName,
+                total: total,
+                paid: paid,
+                remaining: remaining,
+                status: displayStatus,
+                method: p.transactions.length > 0 ? p.transactions[p.transactions.length - 1].method : 'N/A',
+                date: p.createdAt
+            };
         }));
 
         res.json({ success: true, count: formatted.length, data: formatted });
