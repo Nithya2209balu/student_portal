@@ -254,13 +254,25 @@ exports.addManualPayment = async (req, res, next) => {
         // Generate unique receipt ID
         const receiptId = `REC-${Math.floor(1000 + Math.random() * 9000)}`;
 
+        // Smart Course Lookup for fee initialization
+        let normalizedCourseId = courseId;
+        if (!normalizedCourseId || !mongoose.Types.ObjectId.isValid(normalizedCourseId)) {
+            const user = await User.findById(userId);
+            if (user && user.courseName) {
+                const foundCourse = await Course.findOne({ 
+                    $or: [{ title: user.courseName }, { name: user.courseName }] 
+                });
+                if (foundCourse) normalizedCourseId = foundCourse._id;
+            }
+        }
+
         let payment = await Payment.findOne({ userId });
 
         if (!payment) {
             // First payment: Fetch course details for fees
             let courseAmount = 0;
-            if (courseId && mongoose.Types.ObjectId.isValid(courseId)) {
-                const course = await Course.findById(courseId);
+            if (normalizedCourseId && mongoose.Types.ObjectId.isValid(normalizedCourseId)) {
+                const course = await Course.findById(normalizedCourseId);
                 if (course) courseAmount = course.amount;
             }
 
@@ -521,10 +533,13 @@ exports.getStudentCourseInfo = async (req, res, next) => {
             }
         }
 
-        // 4. Fetch existing payment record to get paidAmount & remainingAmount
+        // 4. Fetch existing payment record to get paidAmount
         const existingPayment = await Payment.findOne({ userId }).sort({ createdAt: -1 });
-        const paidAmount      = existingPayment ? existingPayment.paidAmount      : 0;
-        const remainingAmount = existingPayment ? existingPayment.remainingAmount  : fees;
+        const paidAmount      = existingPayment ? existingPayment.paidAmount : 0;
+        
+        // 5. Calculate remaining amount dynamically to ensure UI consistency
+        // Requirement: remaining = total - paid
+        const remainingAmount = Math.max(0, fees - paidAmount);
 
         res.json({
             success: true,
@@ -533,9 +548,11 @@ exports.getStudentCourseInfo = async (req, res, next) => {
                 courseId: courseObjectId,
                 courseNumber: user.courseId,
                 courseTitle,
-                fees,
+                fees, // Traditional field
+                totalAmount: fees, // Prompt requirement name
                 paidAmount,
-                remainingAmount,
+                remainingAmount, // Traditional field
+                balanceAmount: remainingAmount, // Prompt requirement name
             },
         });
     } catch (err) {
