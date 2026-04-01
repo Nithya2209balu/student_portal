@@ -513,76 +513,104 @@ exports.listPayments = async (req, res, next) => {
     try {
         const { status, month, year, startDate, endDate, userId } = req.query;
         
-        let query = {};
-        if (status && status !== "all") query.status = status;
-        if (userId) query.userId = userId;
+        let paymentQuery = {};
+        if (status && status !== "all") paymentQuery.status = status;
+        if (userId) paymentQuery.userId = userId;
+
+        const hasDateFilter = (month && year) || (startDate && endDate);
 
         if (month && year) {
             const m = parseInt(month) || new Date().getMonth() + 1;
             const y = parseInt(year) || new Date().getFullYear();
             const start = new Date(y, m - 1, 1);
             const end = new Date(y, m, 0, 23, 59, 59);
-            query.createdAt = { $gte: start, $lte: end };
+            paymentQuery.createdAt = { $gte: start, $lte: end };
         } else if (startDate && endDate) {
-            query.createdAt = { $gte: new Date(startDate), $lte: new Date(endDate) };
+            paymentQuery.createdAt = { $gte: new Date(startDate), $lte: new Date(endDate) };
         }
 
-        const payments = await Payment.find(query)
-            .populate("userId", "name email mobile courseName courseId")
-            .populate("courseId", "title")
-            .sort({ createdAt: -1 });
+        let results = [];
 
-        const formatted = await Promise.all(payments.map(async (p) => {
-            let total = p.totalFees || 0;
-            let courseName = p.courseId?.title || p.userId?.courseName || "N/A";
+        // MODE 1: Filtered Report OR User-specific List
+        // If we have filters, we start with the Payment collection to match the "Report" UI
+        if (hasDateFilter || userId || (status && status !== "all")) {
+            const payments = await Payment.find(paymentQuery)
+                .populate("userId", "name email mobile courseName courseId")
+                .populate("courseId", "title")
+                .sort({ createdAt: -1 });
 
-            // Self-heal logic
-            if (total === 0 || courseName === "N/A") {
-                const User = require("../models/User");
-                const Course = require("../models/Course");
-                const user = p.userId || await User.findById(p.userId);
-                if (user) {
-                    if (courseName === "N/A") courseName = user.courseName || courseName;
-                    let foundCourse = null;
-                    if (user.courseId) foundCourse = await Course.findOne({ courseId: user.courseId });
-                    if (!foundCourse && user.courseName) {
-                        foundCourse = await Course.findOne({ $or: [{ title: user.courseName }, { name: user.courseName }] });
-                    }
-                    if (foundCourse) {
-                        if (total === 0) total = foundCourse.amount;
-                        if (!courseName || courseName === "N/A") courseName = foundCourse.title;
-                    } else if (user.courseName) {
-                        // 3. Fallback to Category-based lookup (for students whose course isn't in main list)
-                        const CourseCategory = require("../models/CourseCategory");
-                        const category = await CourseCategory.findOne({ name: user.courseName });
-                        if (category && total === 0) total = category.fees || 0;
-                    }
-                }
-            }
+            results = await Promise.all(payments.map(async (p) => {
+                return await formatPaymentData(p);
+            }));
+        } 
+        // MODE 2: General Student List (No specific report filters)
+        // We start with the User model to show ALL students (including non-paid ones)
+        else {
+            // Using regex for role to handle inconsistent data like "student      t"
+            const students = await User.find({ role: /^student/i }).select("name email mobile courseName courseId createdAt");
+            const allPayments = await Payment.find().populate("courseId", "title");
 
-            const paid = p.paidAmount || 0;
-            const remaining = Math.max(0, total - paid);
+            results = await Promise.all(students.map(async (student) => {
+                const payment = allPayments.find(p => p.userId.toString() === student._id.toString());
+                return await formatPaymentData(payment, student);
+            }));
+        }
 
-            return {
-                _id: p.userId?._id || p._id,
-                paymentId: p._id,
-                name: p.userId?.name || 'Unknown',
-                course: courseName,
-                duration: p.durationInDays || 90,
-                totalFees: total, 
-                paidAmount: paid,
-                pendingAmount: remaining,
-                status: remaining <= 0 ? "paid" : (paid > 0 ? "partial" : "pending"),
-                method: p.transactions.length > 0 ? p.transactions[p.transactions.length - 1].method : 'N/A',
-                date: p.createdAt 
-            };
-        }));
+        // Final cleanup and sorting
+        const finalData = results.filter(item => item !== null).sort((a, b) => new Date(b.date) - new Date(a.date));
 
-        res.json({ success: true, count: formatted.length, data: formatted });
+        res.json({ success: true, count: finalData.length, data: finalData });
     } catch (err) {
         next(err);
     }
 };
+
+// Helper to unify data formatting and self-healing
+async function formatPaymentData(payment, studentUser = null) {
+    const user = studentUser || payment?.userId;
+    if (!user) return null;
+
+    let total = payment?.totalFees || 0;
+    let paid = payment?.paidAmount || 0;
+    let courseName = payment?.courseId?.title || user.courseName || "N/A";
+    let duration = payment?.durationInDays || 90;
+
+    // Self-heal logic
+    if (total === 0 || courseName === "N/A") {
+        const Course = require("../models/Course");
+        const CourseCategory = require("../models/CourseCategory");
+        
+        let foundCourse = null;
+        if (user.courseId) foundCourse = await Course.findOne({ courseId: user.courseId });
+        if (!foundCourse && user.courseName) {
+            foundCourse = await Course.findOne({ $or: [{ title: user.courseName }, { name: user.courseName }] });
+        }
+
+        if (foundCourse) {
+            if (total === 0) total = foundCourse.amount;
+            if (!courseName || courseName === "N/A") courseName = foundCourse.title || foundCourse.name;
+        } else if (user.courseName) {
+            const category = await CourseCategory.findOne({ name: user.courseName });
+            if (category && total === 0) total = category.fees || 0;
+        }
+    }
+
+    const remaining = Math.max(0, total - paid);
+    
+    return {
+        _id: user._id,
+        paymentId: payment?._id || null,
+        name: user.name,
+        course: courseName,
+        duration: duration,
+        totalFees: total,
+        paidAmount: paid,
+        pendingAmount: remaining,
+        status: remaining <= 0 && total > 0 ? "paid" : (paid > 0 ? "partial" : "pending"),
+        method: payment?.transactions?.length > 0 ? payment.transactions[payment.transactions.length - 1].method : 'N/A',
+        date: payment?.createdAt || user.createdAt
+    };
+}
 
 /**
  * 🔹 ADMIN: Get Student Course & Fees + Payment Summary (for form pre-fill)
