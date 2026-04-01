@@ -141,8 +141,7 @@ exports.getPaymentHistory = async (req, res, next) => {
             courseName: dynamicCourseTitle,
             totalAmount: dynamicFees,
             paidAmount: payment.paidAmount,
-            pendingAmount: Math.max(0, dynamicFees - payment.paidAmount),
-            balanceAmount: Math.max(0, dynamicFees - payment.paidAmount) // Alias for compatibility
+            pendingAmount: Math.max(0, dynamicFees - payment.paidAmount)
         }));
 
         res.json({
