@@ -513,94 +513,69 @@ exports.listPayments = async (req, res, next) => {
     try {
         const { status, month, year, startDate, endDate, userId } = req.query;
         
-        // 1. Build Payment Query for filtering
-        let paymentQuery = {};
-        if (userId) paymentQuery.userId = userId;
-        
+        let query = {};
+        if (status && status !== "all") query.status = status;
+        if (userId) query.userId = userId;
+
         if (month && year) {
             const m = parseInt(month) || new Date().getMonth() + 1;
             const y = parseInt(year) || new Date().getFullYear();
             const start = new Date(y, m - 1, 1);
             const end = new Date(y, m, 0, 23, 59, 59);
-            paymentQuery.createdAt = { $gte: start, $lte: end };
+            query.createdAt = { $gte: start, $lte: end };
         } else if (startDate && endDate) {
-            paymentQuery.createdAt = { $gte: new Date(startDate), $lte: new Date(endDate) };
+            query.createdAt = { $gte: new Date(startDate), $lte: new Date(endDate) };
         }
 
-        // 2. Fetch students (all if no date filter, otherwise just relevant ones)
-        let students;
-        if (Object.keys(paymentQuery).length === 0) {
-            students = await User.find({ role: "student" }).select("name email mobile courseName courseId createdAt");
-        } else {
-            // Find students associated with these filtered payments
-            const filteredPayments = await Payment.find(paymentQuery).select("userId");
-            const studentIds = filteredPayments.map(p => p.userId);
-            students = await User.find({ _id: { $in: studentIds } }).select("name email mobile courseName courseId createdAt");
-        }
+        const payments = await Payment.find(query)
+            .populate("userId", "name email mobile courseName courseId")
+            .populate("courseId", "title")
+            .sort({ createdAt: -1 });
 
-        // 3. Fetch all payment records for context
-        const payments = await Payment.find().populate("courseId", "title");
+        const formatted = await Promise.all(payments.map(async (p) => {
+            let total = p.totalFees || 0;
+            let courseName = p.courseId?.title || p.userId?.courseName || "N/A";
 
-        // 4. Combine and Self-Heal
-        const formatted = await Promise.all(students.map(async (student) => {
-            const payment = payments.find(p => p.userId.toString() === student._id.toString());
-            
-            let total = payment?.totalFees || 0;
-            let paid = payment?.paidAmount || 0;
-            let courseName = payment?.courseId?.title || student.courseName || "N/A";
-            let duration = payment?.durationInDays || 90;
-            
             // Self-heal logic
             if (total === 0 || courseName === "N/A") {
-                if (courseName === "N/A") courseName = student.courseName || courseName;
+                const User = require("../models/User");
                 const Course = require("../models/Course");
-                let foundCourse = null;
-                if (student.courseId) foundCourse = await Course.findOne({ courseId: student.courseId });
-                if (!foundCourse && student.courseName) {
-                    foundCourse = await Course.findOne({ $or: [{ title: student.courseName }, { name: student.courseName }] });
-                }
-                if (foundCourse) {
-                    if (total === 0) total = foundCourse.amount;
-                    if (!courseName || courseName === "N/A") courseName = foundCourse.title || foundCourse.name;
-                } else if (student.courseName) {
-                    const CourseCategory = require("../models/CourseCategory");
-                    const category = await CourseCategory.findOne({ name: student.courseName });
-                    if (category && total === 0) total = category.fees || 0;
+                const user = p.userId || await User.findById(p.userId);
+                if (user) {
+                    if (courseName === "N/A") courseName = user.courseName || courseName;
+                    let foundCourse = null;
+                    if (user.courseId) foundCourse = await Course.findOne({ courseId: user.courseId });
+                    if (!foundCourse && user.courseName) {
+                        foundCourse = await Course.findOne({ $or: [{ title: user.courseName }, { name: user.courseName }] });
+                    }
+                    if (foundCourse) {
+                        if (total === 0) total = foundCourse.amount;
+                        if (!courseName || courseName === "N/A") courseName = foundCourse.title;
+                    }
                 }
             }
 
+            const paid = p.paidAmount || 0;
             const remaining = Math.max(0, total - paid);
-            let displayStatus = payment?.status || "pending";
-            if (total > 0) {
-                if (remaining <= 0) displayStatus = "paid";
-                else if (paid > 0) displayStatus = "partial";
-                else displayStatus = "pending";
-            }
-
-            // Filtering by Status
-            if (status && status !== "all" && displayStatus !== status) return null;
 
             return {
-                _id: student._id,
-                paymentId: payment?._id || null,
-                name: student.name,
-                email: student.email,
-                mobile: student.mobile,
+                _id: p.userId?._id || p._id,
+                paymentId: p._id,
+                name: p.userId?.name || 'Unknown',
                 course: courseName,
-                duration: duration,
+                duration: p.durationInDays || 90,
                 fees: total,
-                total: total,
-                paid: paid,
-                remaining: remaining,
-                status: displayStatus,
-                method: payment?.transactions?.length > 0 ? payment.transactions[payment.transactions.length - 1].method : 'N/A',
-                date: payment?.createdAt || student.createdAt
+                totalFees: total, // Explicit requirement
+                paidAmount: paid, // Standardizing
+                remainingAmount: remaining, // Standardizing
+                pendingAmount: remaining, // Explicit requirement
+                status: p.status,
+                method: p.transactions.length > 0 ? p.transactions[p.transactions.length - 1].method : 'N/A',
+                date: p.createdAt // ISO string includes date and time
             };
         }));
 
-        const finalData = formatted.filter(item => item !== null).sort((a, b) => new Date(b.date) - new Date(a.date));
-
-        res.json({ success: true, count: finalData.length, data: finalData });
+        res.json({ success: true, count: formatted.length, data: formatted });
     } catch (err) {
         next(err);
     }
