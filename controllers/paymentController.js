@@ -99,7 +99,7 @@ exports.getPaymentHistory = async (req, res, next) => {
             const user = await User.findById(userId).select("courseName courseId");
             if (user) {
                 if (dynamicCourseTitle === "Course") dynamicCourseTitle = user.courseName || dynamicCourseTitle;
-                
+
                 // 1. Try lookup by courseId (Number)
                 let course = null;
                 if (user.courseId) {
@@ -108,8 +108,8 @@ exports.getPaymentHistory = async (req, res, next) => {
 
                 // 2. Fallback to Name-based lookup
                 if (!course && user.courseName) {
-                    course = await Course.findOne({ 
-                        $or: [{ title: user.courseName }, { name: user.courseName }] 
+                    course = await Course.findOne({
+                        $or: [{ title: user.courseName }, { name: user.courseName }]
                     });
                 }
 
@@ -129,7 +129,7 @@ exports.getPaymentHistory = async (req, res, next) => {
 
         const transactions = payment.transactions.map(tx => ({
             _id: tx._id,
-            paymentId: payment._id, 
+            paymentId: payment._id,
             date: tx.date,
             method: tx.method,
             type: tx.type || "Installment",
@@ -172,6 +172,11 @@ exports.downloadSingleReceipt = async (req, res, next) => {
 
         doc.pipe(res);
 
+        // --- LOGO PATH ---
+        const path = require("path");
+        const logoPath = path.join(__dirname, "../uploads/categories/by8labs_logo.png");
+        const fs = require("fs");
+
         // --- 🔹 DYNAMIC DATA HEALING for RECEIPT ---
         let courseName = payment.courseId?.title || "N/A";
         let totalFees = payment.totalFees || 0;
@@ -185,7 +190,7 @@ exports.downloadSingleReceipt = async (req, res, next) => {
                 let foundCourse = null;
                 if (user.courseId) foundCourse = await Course.findOne({ courseId: user.courseId });
                 if (!foundCourse && user.courseName) foundCourse = await Course.findOne({ $or: [{ title: user.courseName }, { name: user.courseName }] });
-                
+
                 if (foundCourse) {
                     if (totalFees === 0) totalFees = foundCourse.amount;
                     if (courseName === "N/A") courseName = foundCourse.title;
@@ -196,66 +201,85 @@ exports.downloadSingleReceipt = async (req, res, next) => {
                 }
             }
         }
-        
+
         const remaining = Math.max(0, totalFees - payment.paidAmount);
 
+        // --- 🔹 WATERMARK (faded logo in center background) ---
+        if (fs.existsSync(logoPath)) {
+            doc.save();
+            doc.opacity(0.06);
+            doc.image(logoPath, 150, 280, { width: 300 });
+            doc.restore();
+        }
+
         // --- 🔹 DESIGN TEMPLATE ---
-        
-        // 1. Header & Border
+
+        // 1. Outer Border
         doc.rect(20, 20, 555, 750).stroke("#CCCCCC");
-        doc.fillColor("#1A237E").fontSize(24).text("BY8 LABS", { align: "center" });
-        doc.fontSize(10).fillColor("#666666").text("Official Payment Receipt", { align: "center" });
-        doc.moveDown(2);
 
-        // 2. Receipt Info Block
-        doc.fillColor("#000000").fontSize(10)
-           .text(`Receipt ID: ${tx.receiptId || "N/A"}`, 400, 100)
-           .text(`Date: ${tx.date.toLocaleDateString()}`, 400, 115);
+        // 2. Header with Logo
+        if (fs.existsSync(logoPath)) {
+            doc.image(logoPath, 50, 35, { width: 70 });
+        }
+        doc.fillColor("#1A237E").fontSize(22).text("BY8LABS", 130, 48, { align: "left" });
+        doc.fontSize(10).fillColor("#666666").text("Official Payment Receipt", 130, 72, { align: "left" });
 
-        // 3. Student Details
-        doc.fillColor("#1A237E").fontSize(12).text("Student Details", 50, 140);
-        doc.rect(50, 155, 250, 1).fill("#1A237E");
-        doc.moveDown(0.5);
+        // Divider under header
+        doc.rect(20, 115, 555, 2).fill("#1A237E");
+
+        // 3. Receipt Info (right aligned)
+        doc.fillColor("#333333").fontSize(10)
+            .text(`Receipt ID: ${tx.receiptId || "N/A"}`, 400, 125)
+            .text(`Date: ${tx.date.toLocaleDateString()}`, 400, 140);
+
+        // 4. Student Details
+        doc.fillColor("#1A237E").fontSize(12).text("Student Details", 50, 135);
         doc.fillColor("#000000").fontSize(11)
-           .text(`Name: ${payment.userId.name}`, 50, 165)
-           .text(`Email: ${payment.userId.email}`, 50, 180)
-           .text(`Course: ${courseName}`, 50, 195);
+            .text(`Name:   ${payment.userId.name}`, 50, 155)
+            .text(`Email:    ${payment.userId.email}`, 50, 173)
+            .text(`Course: ${courseName}`, 50, 191);
 
-        // 4. Transaction Summary Table
-        doc.moveDown(2);
+        // 5. Transaction Summary Table
         const tableTop = 230;
-        doc.fillColor("#F5F5F5").rect(50, tableTop, 500, 25).fill();
-        doc.fillColor("#1A237E").fontSize(10)
-           .text("DESCRIPTION", 60, tableTop + 7)
-           .text("PAYMENT MODE", 300, tableTop + 7)
-           .text("AMOUNT", 480, tableTop + 7);
+        doc.fillColor("#1A237E").rect(50, tableTop, 500, 28).fill();
+        doc.fillColor("#FFFFFF").fontSize(10)
+            .text("DESCRIPTION", 60, tableTop + 8)
+            .text("PAYMENT MODE", 250, tableTop + 8)
+            .text("AMOUNT", 470, tableTop + 8);
 
         doc.fillColor("#000000").fontSize(11)
-           .text(tx.type || "Installment Payment", 60, tableTop + 40)
-           .text(tx.method?.toUpperCase() || "CASH", 300, tableTop + 40)
-           .text(`Rs. ${tx.amount}`, 480, tableTop + 40);
+            .text(tx.type || "Installment Payment", 60, tableTop + 42)
+            .text(tx.method?.toUpperCase() || "CASH", 250, tableTop + 42)
+            .text(`Rs. ${tx.amount}`, 470, tableTop + 42);
 
-        doc.rect(50, tableTop + 60, 500, 1).fill("#EEEEEE");
+        doc.rect(50, tableTop + 65, 500, 1).fill("#DDDDDD");
 
-        // 5. Grand Totals 
-        doc.moveDown(3);
-        const summaryTop = doc.y + 20;
-        doc.fillColor("#000000").fontSize(10)
-           .text("Total Course Fees:", 350, summaryTop)
-           .text(`Rs. ${totalFees}`, 480, summaryTop)
-           .text("Currently Paid Total:", 350, summaryTop + 20)
-           .text(`Rs. ${payment.paidAmount}`, 480, summaryTop + 20);
+        // 6. Grand Totals Summary
+        const summaryTop = tableTop + 90;
+        doc.fillColor("#555555").fontSize(10)
+            .text("Total Course Fees:", 320, summaryTop)
+            .text(`Rs. ${totalFees}`, 470, summaryTop)
+            .text("Currently Paid Total:", 320, summaryTop + 22)
+            .text(`Rs. ${payment.paidAmount}`, 470, summaryTop + 22);
 
-        doc.fillColor("#B71C1C").fontSize(12).font("Helvetica-Bold")
-           .text("BALANCE DUE:", 350, summaryTop + 45)
-           .text(`Rs. ${remaining}`, 480, summaryTop + 45);
+        doc.rect(310, summaryTop + 40, 245, 1).fill("#CCCCCC");
 
-        // 6. Footer & Stamp Area
+        doc.fillColor("#B71C1C").fontSize(13).font("Helvetica-Bold")
+            .text("BALANCE DUE:", 320, summaryTop + 50)
+            .text(`Rs. ${remaining}`, 470, summaryTop + 50);
+
+        // 7. PAID stamp (only if fully settled)
+        if (remaining <= 0) {
+            doc.save();
+            doc.rotate(-35, { origin: [380, 400] });
+            doc.fillColor("#2E7D32").fontSize(40).font("Helvetica-Bold")
+                .opacity(0.25).text("PAID", 280, 400);
+            doc.restore();
+        }
+
+        // 8. Footer
         doc.font("Helvetica").fontSize(8).fillColor("#999999")
-           .text("--------------------------------------------------", 50, 680)
-           .text("This is a computer generated receipt. No signature required.", 50, 690, { align: "center", width: 500 });
-
-        doc.fontSize(12).fillColor("#1A237E").text("PAID", 450, 630, { characterSpacing: 5 });
+            .text("This is a computer-generated receipt. No signature required.", 50, 720, { align: "center", width: 500 });
 
         doc.end();
     } catch (err) {
@@ -320,8 +344,8 @@ exports.downloadPayslip = async (req, res, next) => {
 exports.addManualPayment = async (req, res, next) => {
     try {
         const { userId, courseId, amount, method, type } = req.body;
-        const collectedBy = req.user.id; 
-        
+        const collectedBy = req.user.id;
+
         const numAmount = Number(amount);
 
         if (!userId || isNaN(numAmount) || !method) {
@@ -387,9 +411,9 @@ exports.addManualPayment = async (req, res, next) => {
                 durationInDays: duration,
                 endDate,
                 nextInstallmentDate: nextInstallment,
-                transactions: [{ 
-                    amount: numAmount, 
-                    method, 
+                transactions: [{
+                    amount: numAmount,
+                    method,
                     collectedBy,
                     type: type || "Admission Fee",
                     receiptId,
@@ -400,15 +424,15 @@ exports.addManualPayment = async (req, res, next) => {
             // Subsequent payment
             payment.paidAmount += numAmount;
             payment.remainingAmount = Math.max(0, payment.totalFees - payment.paidAmount);
-            
+
             // Update next installment date (+30 days from previous)
             const nextInstallment = new Date();
             nextInstallment.setDate(nextInstallment.getDate() + 30);
             payment.nextInstallmentDate = nextInstallment;
 
-            payment.transactions.push({ 
-                amount: numAmount, 
-                method, 
+            payment.transactions.push({
+                amount: numAmount,
+                method,
                 collectedBy,
                 type: type || `Installment ${payment.transactions.length}`,
                 receiptId,
@@ -459,7 +483,7 @@ exports.getMonthlyReport = async (req, res, next) => {
         // Use Set to count unique students
         const totalStudents = new Set(payments.map(p => p.userId.toString())).size;
         const paidStudents = new Set(payments.filter(p => p.status === "paid").map(p => p.userId.toString())).size;
-        
+
         const report = {
             totalStudents,
             paidStudents,
@@ -568,7 +592,7 @@ exports.downloadReport = async (req, res, next) => {
 exports.listPayments = async (req, res, next) => {
     try {
         const { status, month, year, startDate, endDate, userId } = req.query;
-        
+
         let paymentQuery = {};
         if (status && status !== "all") paymentQuery.status = status;
         if (userId) paymentQuery.userId = userId;
@@ -598,7 +622,7 @@ exports.listPayments = async (req, res, next) => {
             results = await Promise.all(payments.map(async (p) => {
                 return await formatPaymentData(p);
             }));
-        } 
+        }
         // MODE 2: General Student List (No specific report filters)
         // We start with the User model to show ALL students (including non-paid ones)
         else {
@@ -635,7 +659,7 @@ async function formatPaymentData(payment, studentUser = null) {
     if (total === 0 || courseName === "N/A") {
         const Course = require("../models/Course");
         const CourseCategory = require("../models/CourseCategory");
-        
+
         let foundCourse = null;
         if (user.courseId) foundCourse = await Course.findOne({ courseId: user.courseId });
         if (!foundCourse && user.courseName) {
@@ -652,7 +676,7 @@ async function formatPaymentData(payment, studentUser = null) {
     }
 
     const remaining = Math.max(0, total - paid);
-    
+
     return {
         _id: user._id,
         paymentId: payment?._id || null,
@@ -721,8 +745,8 @@ exports.getStudentCourseInfo = async (req, res, next) => {
 
         // 4. Fetch existing payment record to get paidAmount
         const existingPayment = await Payment.findOne({ userId }).sort({ createdAt: -1 });
-        const paidAmount      = existingPayment ? existingPayment.paidAmount : 0;
-        
+        const paidAmount = existingPayment ? existingPayment.paidAmount : 0;
+
         // 5. Calculate remaining amount dynamically to ensure UI consistency
         // Requirement: remaining = total - paid
         const remainingAmount = Math.max(0, fees - paidAmount);
