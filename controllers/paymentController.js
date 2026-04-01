@@ -287,15 +287,26 @@ exports.addManualPayment = async (req, res, next) => {
         // Generate unique receipt ID
         const receiptId = `REC-${Math.floor(1000 + Math.random() * 9000)}`;
 
-        // Smart Course Lookup for fee initialization
+        // Smart Course/Fee Lookup for initialization
         let normalizedCourseId = courseId;
-        if (!normalizedCourseId || !mongoose.Types.ObjectId.isValid(normalizedCourseId)) {
-            const user = await User.findById(userId);
-            if (user && user.courseName) {
-                const foundCourse = await Course.findOne({ 
-                    $or: [{ title: user.courseName }, { name: user.courseName }] 
-                });
-                if (foundCourse) normalizedCourseId = foundCourse._id;
+        let totalFees = 0;
+        const user = await User.findById(userId);
+
+        if (user) {
+            const course = await Course.findOne({
+                $or: [
+                    { courseId: user.courseId || "" },
+                    { title: { $regex: new RegExp("^" + (user.courseName || "").trim().replace(/\s+/g, "\\s*") + "$", "i") } }
+                ],
+            });
+
+            if (course) {
+                normalizedCourseId = course._id;
+                totalFees = course.amount;
+            } else if (user.courseName) {
+                const CourseCategory = require("../models/CourseCategory");
+                const category = await CourseCategory.findOne({ name: user.courseName });
+                if (category) totalFees = category.fees || 0;
             }
         }
 
@@ -633,13 +644,16 @@ exports.getStudentCourseInfo = async (req, res, next) => {
             }
         }
 
-        // 2. Fallback to Name-based lookup in Courses if fee still 0
-        if (fees === 0 && user.courseName) {
+        // 2. Fallback to Regex-based Name lookup in Courses
+        if (user.courseName) {
             const course = await Course.findOne({
-                $or: [{ title: user.courseName }, { name: user.courseName }],
+                $or: [
+                    { title: { $regex: new RegExp("^" + user.courseName.trim().replace(/\s+/g, "\\s*") + "$", "i") } },
+                    { name: { $regex: new RegExp("^" + user.courseName.trim().replace(/\s+/g, "\\s*") + "$", "i") } }
+                ],
             });
             if (course) {
-                fees = course.amount;
+                if (fees === 0) fees = course.amount;
                 courseObjectId = course._id;
                 courseTitle = course.title || course.name;
             }
@@ -652,6 +666,7 @@ exports.getStudentCourseInfo = async (req, res, next) => {
             if (category) {
                 fees = category.fees || 0;
                 courseTitle = category.name;
+                courseObjectId = category._id; // ✅ FIXED: Set ID from category if course not found
             }
         }
 
