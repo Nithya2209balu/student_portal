@@ -17,6 +17,7 @@ const userSchema = new mongoose.Schema(
         resetTokenExpiry: { type: Date },
         role: { type: String, default: "student" },
         isApproved: { type: Boolean, default: false },
+        profileImage: { type: String, default: "" },
     },
     { timestamps: true }
 );

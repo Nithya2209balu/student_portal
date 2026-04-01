@@ -20,11 +20,11 @@ const hrOnly = (req, res, next) => {
     next();
 };
 
-// 🔹 Student Routes
+// 🔹 Student Routes (Public Download for PDFs)
 router.get("/student/:userId", protect, getPaymentDashboard);
 router.get("/history/:userId", protect, getPaymentHistory);
-router.get("/payslip/:userId", protect, downloadPayslip);
-router.get("/receipt/:paymentId/:transactionId", protect, downloadSingleReceipt);
+router.get("/payslip/:userId", downloadPayslip);
+router.get("/receipt/:paymentId/:transactionId", downloadSingleReceipt);
 
 // 🔹 Admin/HR Routes
 router.post("/admin/add", protect, hrOnly, addManualPayment);

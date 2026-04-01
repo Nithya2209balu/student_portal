@@ -257,3 +257,43 @@ exports.verifyAttendanceEditById = async (req, res, next) => {
         res.json({ success: true, message: "Attendance edited successfully", data: record });
     } catch (err) { next(err); }
 };
+
+/**
+ * 🔹 GET /api/attendance/progress/:userId
+ * Fetch: totalDurationDays (assumed 90), attendedDays, totalHours, attendedHours, progressPercentage, and points.
+ */
+exports.getAttendanceProgress = async (req, res, next) => {
+    try {
+        const { userId } = req.params;
+
+        // Fetch user from DB to confirm existing
+        const userFound = await User.findById(userId);
+        if (!userFound) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        // Count 'present' records for this user
+        const attendedDays = await Attendance.countDocuments({
+            userId,
+            status: "present"
+        });
+
+        const totalDurationDays = 90; // Default requirement
+        const totalHours = totalDurationDays * 2; // 1 day = 2 hours class
+        const attendedHours = attendedDays * 2;
+        const points = Math.round((attendedDays / totalDurationDays) * 100);
+
+        res.json({
+            success: true,
+            data: {
+                totalDurationDays,
+                attendedDays,
+                totalHours,
+                attendedHours,
+                points
+            }
+        });
+    } catch (err) {
+        next(err);
+    }
+};

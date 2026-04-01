@@ -8,6 +8,7 @@ const {
     markAttendanceById,
     requestAttendanceEditById,
     verifyAttendanceEditById,
+    getAttendanceProgress,
 } = require("../controllers/attendanceController");
 const { protect, isAdmin } = require("../middlewares/auth");
 
@@ -23,5 +24,11 @@ router.post("/:userId", protect, isAdmin, markAttendanceById);     // POST /api/
 // HR Edit Verification Flow
 router.post("/:userId/request-edit", protect, isAdmin, requestAttendanceEditById);
 router.put("/:userId/verify-edit", protect, isAdmin, verifyAttendanceEditById);
+
+/**
+ * 🔹 STUDENT: Attendance + Course Progress API
+ * GET /api/attendance/progress/:userId
+ */
+router.get("/progress/:userId", protect, getAttendanceProgress);
 
 module.exports = router;
