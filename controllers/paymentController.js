@@ -551,6 +551,11 @@ exports.listPayments = async (req, res, next) => {
                     if (foundCourse) {
                         if (total === 0) total = foundCourse.amount;
                         if (!courseName || courseName === "N/A") courseName = foundCourse.title;
+                    } else if (user.courseName) {
+                        // 3. Fallback to Category-based lookup (for students whose course isn't in main list)
+                        const CourseCategory = require("../models/CourseCategory");
+                        const category = await CourseCategory.findOne({ name: user.courseName });
+                        if (category && total === 0) total = category.fees || 0;
                     }
                 }
             }
@@ -564,14 +569,12 @@ exports.listPayments = async (req, res, next) => {
                 name: p.userId?.name || 'Unknown',
                 course: courseName,
                 duration: p.durationInDays || 90,
-                fees: total,
-                totalFees: total, // Explicit requirement
-                paidAmount: paid, // Standardizing
-                remainingAmount: remaining, // Standardizing
-                pendingAmount: remaining, // Explicit requirement
-                status: p.status,
+                totalFees: total, 
+                paidAmount: paid,
+                pendingAmount: remaining,
+                status: remaining <= 0 ? "paid" : (paid > 0 ? "partial" : "pending"),
                 method: p.transactions.length > 0 ? p.transactions[p.transactions.length - 1].method : 'N/A',
-                date: p.createdAt // ISO string includes date and time
+                date: p.createdAt 
             };
         }));
 
