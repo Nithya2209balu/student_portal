@@ -233,7 +233,7 @@ exports.downloadSingleReceipt = async (req, res, next) => {
         doc.fillColor("#000000").fontSize(11)
            .text(tx.type || "Installment Payment", 60, tableTop + 40)
            .text(tx.method?.toUpperCase() || "CASH", 300, tableTop + 40)
-           .text(`₹${tx.amount}`, 480, tableTop + 40);
+           .text(`Rs. ${tx.amount}`, 480, tableTop + 40);
 
         doc.rect(50, tableTop + 60, 500, 1).fill("#EEEEEE");
 
@@ -242,13 +242,13 @@ exports.downloadSingleReceipt = async (req, res, next) => {
         const summaryTop = doc.y + 20;
         doc.fillColor("#000000").fontSize(10)
            .text("Total Course Fees:", 350, summaryTop)
-           .text(`₹${totalFees}`, 480, summaryTop)
+           .text(`Rs. ${totalFees}`, 480, summaryTop)
            .text("Currently Paid Total:", 350, summaryTop + 20)
-           .text(`₹${payment.paidAmount}`, 480, summaryTop + 20);
+           .text(`Rs. ${payment.paidAmount}`, 480, summaryTop + 20);
 
         doc.fillColor("#B71C1C").fontSize(12).font("Helvetica-Bold")
            .text("BALANCE DUE:", 350, summaryTop + 45)
-           .text(`₹${remaining}`, 480, summaryTop + 45);
+           .text(`Rs. ${remaining}`, 480, summaryTop + 45);
 
         // 6. Footer & Stamp Area
         doc.font("Helvetica").fontSize(8).fillColor("#999999")
