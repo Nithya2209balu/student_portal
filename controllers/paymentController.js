@@ -129,6 +129,7 @@ exports.getPaymentHistory = async (req, res, next) => {
 
         const transactions = payment.transactions.map(tx => ({
             _id: tx._id,
+            transactionId: tx._id,
             paymentId: payment._id,
             date: tx.date,
             method: tx.method,
@@ -166,18 +167,18 @@ exports.downloadSingleReceipt = async (req, res, next) => {
         const tx = payment.transactions.id(transactionId);
         if (!tx) return res.status(404).json({ success: false, message: "Transaction not found" });
 
-        const doc = new PDFDocument({ margin: 50 });
+        const doc = new PDFDocument({ margin: 50, size: "A4" });
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", `attachment; filename=receipt_${tx.receiptId || transactionId}.pdf`);
 
         doc.pipe(res);
 
-        // --- LOGO PATH ---
+        // --- PATHS ---
         const path = require("path");
         const logoPath = path.join(__dirname, "../uploads/categories/by8labs_logo.png");
         const fs = require("fs");
 
-        // --- 🔹 DYNAMIC DATA HEALING for RECEIPT ---
+        // --- 🔹 DYNAMIC DATA HEALING ---
         let courseName = payment.courseId?.title || "N/A";
         let totalFees = payment.totalFees || 0;
 
@@ -204,82 +205,112 @@ exports.downloadSingleReceipt = async (req, res, next) => {
 
         const remaining = Math.max(0, totalFees - payment.paidAmount);
 
-        // --- 🔹 WATERMARK (faded logo in center background) ---
+        // --- 🔹 WATERMARK ---
         if (fs.existsSync(logoPath)) {
             doc.save();
-            doc.opacity(0.06);
-            doc.image(logoPath, 150, 280, { width: 300 });
+            doc.opacity(0.04);
+            doc.image(logoPath, 150, 250, { width: 300 });
             doc.restore();
         }
 
-        // --- 🔹 DESIGN TEMPLATE ---
+        // --- 🔹 UI COLORS ---
+        const primaryColor = "#1A237E";
+        const secondaryColor = "#303F9F";
+        const accentColor = "#B71C1C";
+        const textColor = "#333333";
+        const labelColor = "#666666";
 
-        // 1. Outer Border
-        doc.rect(20, 20, 555, 750).stroke("#CCCCCC");
+        // --- 🔹 HEADER AREA ---
+        // Top Border / Bar
+        doc.rect(0, 0, 595, 120).fill("#F5F5F5");
+        doc.rect(50, 118, 495, 2).fill(primaryColor);
 
-        // 2. Header with Logo
         if (fs.existsSync(logoPath)) {
-            doc.image(logoPath, 50, 35, { width: 70 });
+            doc.image(logoPath, 50, 30, { width: 60 });
         }
-        doc.fillColor("#1A237E").fontSize(22).text("BY8LABS", 130, 48, { align: "left" });
-        doc.fontSize(10).fillColor("#666666").text("Official Payment Receipt", 130, 72, { align: "left" });
+        
+        doc.fillColor(primaryColor).fontSize(24).font("Helvetica-Bold")
+            .text("BY8LABS", 125, 40);
+        
+        doc.fillColor(labelColor).fontSize(10).font("Helvetica")
+            .text("Technology Learning & Innovation Center", 125, 68);
 
-        // Divider under header
-        doc.rect(20, 115, 555, 2).fill("#1A237E");
+        doc.fillColor(textColor).fontSize(14).font("Helvetica-Bold")
+            .text("PAYMENT RECEIPT", 400, 45, { align: "right" });
+        
+        doc.fillColor(labelColor).fontSize(9).font("Helvetica")
+            .text(`Date: ${tx.date.toLocaleDateString()}`, 400, 65, { align: "right" })
+            .text(`Receipt #: ${tx.receiptId || "N/A"}`, 400, 78, { align: "right" });
 
-        // 3. Receipt Info (right aligned)
-        doc.fillColor("#333333").fontSize(10)
-            .text(`Receipt ID: ${tx.receiptId || "N/A"}`, 400, 125)
-            .text(`Date: ${tx.date.toLocaleDateString()}`, 400, 140);
+        doc.moveDown(4);
 
-        // 4. Student Details
-        doc.fillColor("#1A237E").fontSize(12).text("Student Details", 50, 135);
-        doc.fillColor("#000000").fontSize(11)
-            .text(`Name:   ${payment.userId.name}`, 50, 155)
-            .text(`Email:    ${payment.userId.email}`, 50, 173)
-            .text(`Course: ${courseName}`, 50, 191);
+        // --- 🔹 INFO GRID ---
+        const gridTop = 150;
+        
+        // Left Column: Student Info
+        doc.fillColor(primaryColor).fontSize(11).font("Helvetica-Bold").text("BILL TO:", 50, gridTop);
+        doc.fillColor(textColor).fontSize(12).font("Helvetica-Bold").text(payment.userId.name.toUpperCase(), 50, gridTop + 18);
+        doc.fillColor(textColor).fontSize(10).font("Helvetica")
+            .text(`Email: ${payment.userId.email}`, 50, gridTop + 35)
+            .text(`Course: ${courseName}`, 50, gridTop + 50);
 
-        // 5. Transaction Summary Table
-        const tableTop = 230;
-        doc.fillColor("#1A237E").rect(50, tableTop, 500, 28).fill();
-        doc.fillColor("#FFFFFF").fontSize(10)
-            .text("DESCRIPTION", 60, tableTop + 8)
-            .text("PAYMENT MODE", 250, tableTop + 8)
-            .text("AMOUNT", 470, tableTop + 8);
+        // Right Column: Payment Info
+        doc.fillColor(primaryColor).fontSize(11).font("Helvetica-Bold").text("PAYMENT STATUS:", 350, gridTop);
+        const status = remaining <= 0 ? "FULLY PAID" : (payment.paidAmount > 0 ? "PARTIALLY PAID" : "PENDING");
+        doc.fillColor(remaining <= 0 ? "#2E7D32" : accentColor).fontSize(12).font("Helvetica-Bold").text(status, 350, gridTop + 18);
+        doc.fillColor(textColor).fontSize(10).font("Helvetica")
+            .text(`Payment Mode: ${tx.method?.toUpperCase() || "CASH"}`, 350, gridTop + 35);
 
-        doc.fillColor("#000000").fontSize(11)
-            .text(tx.type || "Installment Payment", 60, tableTop + 42)
-            .text(tx.method?.toUpperCase() || "CASH", 250, tableTop + 42)
-            .text(`Rs. ${tx.amount}`, 470, tableTop + 42);
+        doc.moveDown(3);
 
-        doc.rect(50, tableTop + 65, 500, 1).fill("#DDDDDD");
+        // --- 🔹 TRANSACTION TABLE ---
+        const tableTop = 260;
+        doc.rect(50, tableTop, 495, 25).fill(primaryColor);
+        doc.fillColor("#FFFFFF").fontSize(10).font("Helvetica-Bold")
+            .text("DESCRIPTION", 65, tableTop + 8)
+            .text("CATEGORY", 250, tableTop + 8)
+            .text("AMOUNT", 450, tableTop + 8, { align: "right", width: 80 });
 
-        // 6. Grand Totals Summary
-        const summaryTop = tableTop + 90;
-        doc.fillColor("#555555").fontSize(10)
-            .text("Total Course Fees:", 320, summaryTop)
-            .text(`Rs. ${totalFees}`, 470, summaryTop)
-            .text("Currently Paid Total:", 320, summaryTop + 22)
-            .text(`Rs. ${payment.paidAmount}`, 470, summaryTop + 22);
+        doc.fillColor(textColor).fontSize(10).font("Helvetica")
+            .text(tx.type || "Installment Payment", 65, tableTop + 40)
+            .text("Academic Fees", 250, tableTop + 40)
+            .font("Helvetica-Bold").text(`Rs. ${tx.amount.toLocaleString()}`, 450, tableTop + 40, { align: "right", width: 80 });
 
-        doc.rect(310, summaryTop + 40, 245, 1).fill("#CCCCCC");
+        doc.rect(50, tableTop + 65, 495, 1).fill("#EEEEEE");
 
-        doc.fillColor("#B71C1C").fontSize(13).font("Helvetica-Bold")
-            .text("BALANCE DUE:", 320, summaryTop + 50)
-            .text(`Rs. ${remaining}`, 470, summaryTop + 50);
+        // --- 🔹 SUMMARY SECTION ---
+        const summaryTop = tableTop + 100;
+        
+        doc.fillColor(labelColor).fontSize(10).font("Helvetica")
+            .text("Total Course Fees:", 350, summaryTop)
+            .text("Total Amount Paid:", 350, summaryTop + 20);
+        
+        doc.fillColor(textColor).fontSize(10).font("Helvetica-Bold")
+            .text(`Rs. ${totalFees.toLocaleString()}`, 465, summaryTop, { align: "right", width: 80 })
+            .text(`Rs. ${payment.paidAmount.toLocaleString()}`, 465, summaryTop + 20, { align: "right", width: 80 });
 
-        // 7. PAID stamp (only if fully settled)
+        doc.rect(350, summaryTop + 40, 200, 1).fill(primaryColor);
+
+        doc.fillColor(accentColor).fontSize(14).font("Helvetica-Bold")
+            .text("BALANCE DUE:", 350, summaryTop + 52)
+            .text(`Rs. ${remaining.toLocaleString()}`, 465, summaryTop + 52, { align: "right", width: 80 });
+
+        // --- 🔹 PAID STAMP ---
         if (remaining <= 0) {
             doc.save();
-            doc.rotate(-35, { origin: [380, 400] });
-            doc.fillColor("#2E7D32").fontSize(40).font("Helvetica-Bold")
-                .opacity(0.25).text("PAID", 280, 400);
+            doc.rotate(-30, { origin: [300, 450] });
+            doc.rect(230, 420, 140, 60).lineWidth(3).stroke("#2E7D32");
+            doc.fillColor("#2E7D32").fontSize(35).font("Helvetica-Bold").opacity(0.2)
+                .text("PAID", 255, 430);
             doc.restore();
         }
 
-        // 8. Footer
-        doc.font("Helvetica").fontSize(8).fillColor("#999999")
-            .text("This is a computer-generated receipt. No signature required.", 50, 720, { align: "center", width: 500 });
+        // --- 🔹 FOOTER ---
+        const footerY = 750;
+        doc.rect(50, footerY - 10, 495, 1).fill("#EEEEEE");
+        doc.fillColor(labelColor).fontSize(8).font("Helvetica")
+            .text("Note: This is a computer-generated receipt and does not require a physical signature.", 50, footerY, { align: "center", width: 495 })
+            .text("BY8LABS | Technology Learning & Innovation Center", 50, footerY + 12, { align: "center", width: 495 });
 
         doc.end();
     } catch (err) {
@@ -301,35 +332,95 @@ exports.downloadPayslip = async (req, res, next) => {
 
         if (!payment) return res.status(404).json({ success: false, message: "No payment record found" });
 
-        const doc = new PDFDocument();
+        const doc = new PDFDocument({ margin: 50, size: "A4" });
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", `attachment; filename=payslip_${userId}.pdf`);
 
         doc.pipe(res);
 
-        // Header
-        doc.fontSize(20).text("PAYMENT PAYSLIP", { align: "center" });
-        doc.moveDown();
-        doc.fontSize(12).text(`Student Name: ${payment.userId.name}`);
-        doc.text(`Course: ${payment.courseId.title}`);
-        doc.text(`Date: ${new Date().toLocaleDateString()}`);
-        doc.moveDown();
+        // --- PATHS ---
+        const path = require("path");
+        const logoPath = path.join(__dirname, "../uploads/categories/by8labs_logo.png");
+        const fs = require("fs");
 
-        // Summary
-        doc.text(`Total Fees: ₹${payment.totalFees}`);
-        doc.text(`Paid Amount: ₹${payment.paidAmount}`);
-        doc.text(`Remaining Amount: ₹${payment.remainingAmount}`);
-        doc.text(`Status: ${payment.status.toUpperCase()}`);
-        doc.moveDown();
+        const primaryColor = "#1A237E";
+        const textColor = "#333333";
+        const labelColor = "#666666";
 
-        // Transaction List
-        doc.fontSize(14).text("Transaction Details", { underline: true });
-        doc.moveDown(0.5);
+        // --- 🔹 HEADER ---
+        doc.rect(0, 0, 595, 100).fill("#F5F5F5");
+        if (fs.existsSync(logoPath)) {
+            doc.image(logoPath, 50, 25, { width: 50 });
+        }
+        doc.fillColor(primaryColor).fontSize(20).font("Helvetica-Bold")
+            .text("BY8LABS", 110, 30);
+        doc.fillColor(labelColor).fontSize(14).font("Helvetica")
+            .text("PAYMENT SUMMARY PAYSLIP", 110, 55);
+        
+        doc.fillColor(textColor).fontSize(10).font("Helvetica")
+            .text(`Generated on: ${new Date().toLocaleDateString()}`, 400, 45, { align: "right" });
+
+        doc.moveDown(4);
+
+        // --- 🔹 STUDENT INFO ---
+        const infoTop = 130;
+        doc.fillColor(primaryColor).fontSize(11).font("Helvetica-Bold").text("STUDENT DETAILS", 50, infoTop);
+        doc.rect(50, infoTop + 15, 495, 1).fill("#EEEEEE");
+
+        doc.fillColor(textColor).fontSize(10).font("Helvetica")
+            .text("Name:", 50, infoTop + 30)
+            .font("Helvetica-Bold").text(payment.userId.name, 150, infoTop + 30)
+            .font("Helvetica").text("Course:", 50, infoTop + 45)
+            .font("Helvetica-Bold").text(payment.courseId?.title || "N/A", 150, infoTop + 45)
+            .font("Helvetica").text("Email:", 50, infoTop + 60)
+            .font("Helvetica-Bold").text(payment.userId.email, 150, infoTop + 60);
+
+        // --- 🔹 FINANCIAL SUMMARY ---
+        const summaryTop = infoTop + 100;
+        doc.fillColor(primaryColor).fontSize(11).font("Helvetica-Bold").text("FINANCIAL SUMMARY", 50, summaryTop);
+        doc.rect(50, summaryTop + 15, 495, 1).fill("#EEEEEE");
+
+        const col1 = 50, col2 = 180, col3 = 330, col4 = 460;
+        doc.fillColor(labelColor).fontSize(9).font("Helvetica")
+            .text("TOTAL FEES", col1, summaryTop + 30)
+            .text("TOTAL PAID", col2, summaryTop + 30)
+            .text("REMAINING", col3, summaryTop + 30)
+            .text("STATUS", col4, summaryTop + 30);
+
+        doc.fillColor(textColor).fontSize(12).font("Helvetica-Bold")
+            .text(`Rs. ${payment.totalFees.toLocaleString()}`, col1, summaryTop + 45)
+            .text(`Rs. ${payment.paidAmount.toLocaleString()}`, col2, summaryTop + 45)
+            .fillColor("#B71C1C").text(`Rs. ${payment.remainingAmount.toLocaleString()}`, col3, summaryTop + 45)
+            .fillColor(payment.status === "paid" ? "#2E7D32" : primaryColor).text(payment.status.toUpperCase(), col4, summaryTop + 45);
+
+        // --- 🔹 TRANSACTION HISTORY ---
+        const historyTop = summaryTop + 100;
+        doc.fillColor(primaryColor).fontSize(11).font("Helvetica-Bold").text("TRANSACTION HISTORY", 50, historyTop);
+        
+        doc.rect(50, historyTop + 18, 495, 20).fill("#F0F0F0");
+        doc.fillColor(primaryColor).fontSize(9).font("Helvetica-Bold")
+            .text("#", 60, historyTop + 24)
+            .text("DATE", 90, historyTop + 24)
+            .text("TYPE", 200, historyTop + 24)
+            .text("METHOD", 350, historyTop + 24)
+            .text("AMOUNT", 450, historyTop + 24, { align: "right", width: 80 });
+
+        let currentY = historyTop + 45;
         payment.transactions.forEach((tx, index) => {
-            doc.fontSize(10).text(
-                `${index + 1}. Amount: ₹${tx.amount} | Date: ${tx.date.toLocaleString()} | Method: ${tx.method}`
-            );
+            doc.fillColor(textColor).fontSize(9).font("Helvetica")
+                .text(index + 1, 60, currentY)
+                .text(new Date(tx.date).toLocaleDateString(), 90, currentY)
+                .text(tx.type || "Installment", 200, currentY)
+                .text(tx.method?.toUpperCase() || "N/A", 350, currentY)
+                .font("Helvetica-Bold").text(`Rs. ${tx.amount.toLocaleString()}`, 450, currentY, { align: "right", width: 80 });
+            
+            doc.rect(50, currentY + 12, 495, 0.5).fill("#EEEEEE");
+            currentY += 22;
         });
+
+        // --- 🔹 FOOTER ---
+        doc.fillColor(labelColor).fontSize(8).font("Helvetica")
+            .text("This is an official payment payslip issued by BY8LABS. For any discrepancies, please contact support.", 50, 750, { align: "center", width: 495 });
 
         doc.end();
     } catch (err) {
