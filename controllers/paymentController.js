@@ -39,7 +39,6 @@ exports.getPaymentDashboard = async (req, res, next) => {
                             remainingAmount: totalFees,
                             status: "pending",
                             courseName,
-                            courseStatus: "active",
                             nextInstallmentDate: null
                         },
                     });
@@ -52,8 +51,7 @@ exports.getPaymentDashboard = async (req, res, next) => {
                     totalFees: 0,
                     paidAmount: 0,
                     remainingAmount: 0,
-                    status: "pending",
-                    courseStatus: "inactive"
+                    status: "pending"
                 },
             });
         }
@@ -71,7 +69,6 @@ exports.getPaymentDashboard = async (req, res, next) => {
                 daysLeft,
                 status: payment.status,
                 courseName: payment.courseId?.title || "N/A",
-                courseStatus: payment.courseId?.isActive ? "active" : "inactive",
                 nextInstallmentDate: payment.nextInstallmentDate || null,
                 paymentDeadline: payment.nextInstallmentDate || payment.endDate // Explicitly mapping deadline
             },
