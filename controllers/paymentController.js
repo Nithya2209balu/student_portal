@@ -172,41 +172,90 @@ exports.downloadSingleReceipt = async (req, res, next) => {
 
         doc.pipe(res);
 
-        // Header Style
-        doc.fillColor("#444444").fontSize(20).text("PAYMENT RECEIPT", { align: "center" });
-        doc.moveDown();
+        // --- 🔹 DYNAMIC DATA HEALING for RECEIPT ---
+        let courseName = payment.courseId?.title || "N/A";
+        let totalFees = payment.totalFees || 0;
 
-        // Receipt Details
-        doc.fontSize(10)
-           .text(`Receipt ID: ${tx.receiptId || "N/A"}`, { align: "right" })
-           .text(`Date: ${tx.date.toLocaleDateString()}`, { align: "right" });
-
-        doc.moveDown();
-        doc.fontSize(12).fillColor("#000000")
-           .text(`Student Name: ${payment.userId.name}`)
-           .text(`Email: ${payment.userId.email}`)
-           .text(`Course: ${payment.courseId?.title || "N/A"}`);
-
-        doc.moveDown();
-        doc.rect(50, doc.y, 500, 1).fill("#EEEEEE");
-        doc.moveDown();
-
-        // Transaction Info
-        doc.fontSize(14).fillColor("#2E7D32").text(`${tx.type || "Installment Payment"}`);
-        doc.moveDown(0.5);
+        if (courseName === "N/A" || totalFees === 0) {
+            const User = require("../models/User");
+            const Course = require("../models/Course");
+            const user = await User.findById(payment.userId).select("courseName courseId");
+            if (user) {
+                if (courseName === "N/A") courseName = user.courseName || "N/A";
+                let foundCourse = null;
+                if (user.courseId) foundCourse = await Course.findOne({ courseId: user.courseId });
+                if (!foundCourse && user.courseName) foundCourse = await Course.findOne({ $or: [{ title: user.courseName }, { name: user.courseName }] });
+                
+                if (foundCourse) {
+                    if (totalFees === 0) totalFees = foundCourse.amount;
+                    if (courseName === "N/A") courseName = foundCourse.title;
+                } else if (user.courseName) {
+                    const CourseCategory = require("../models/CourseCategory");
+                    const category = await CourseCategory.findOne({ name: user.courseName });
+                    if (category && totalFees === 0) totalFees = category.fees || 0;
+                }
+            }
+        }
         
-        doc.fontSize(12).fillColor("#000000")
-           .text(`Amount Paid: ₹${tx.amount}`)
-           .text(`Payment Mode: ${tx.method?.toUpperCase() || "CASH"}`)
-           .text(`Status: ${tx.status?.toUpperCase() || "SUCCESS"}`);
+        const remaining = Math.max(0, totalFees - payment.paidAmount);
 
-        doc.moveDown();
-        doc.rect(50, doc.y, 500, 1).fill("#EEEEEE");
-        doc.moveDown();
+        // --- 🔹 DESIGN TEMPLATE ---
+        
+        // 1. Header & Border
+        doc.rect(20, 20, 555, 750).stroke("#CCCCCC");
+        doc.fillColor("#1A237E").fontSize(24).text("BY8 LABS", { align: "center" });
+        doc.fontSize(10).fillColor("#666666").text("Official Payment Receipt", { align: "center" });
+        doc.moveDown(2);
 
-        // Footer
-        doc.fontSize(10).fillColor("#777777")
-           .text("Thank you for your payment!", { align: "center" });
+        // 2. Receipt Info Block
+        doc.fillColor("#000000").fontSize(10)
+           .text(`Receipt ID: ${tx.receiptId || "N/A"}`, 400, 100)
+           .text(`Date: ${tx.date.toLocaleDateString()}`, 400, 115);
+
+        // 3. Student Details
+        doc.fillColor("#1A237E").fontSize(12).text("Student Details", 50, 140);
+        doc.rect(50, 155, 250, 1).fill("#1A237E");
+        doc.moveDown(0.5);
+        doc.fillColor("#000000").fontSize(11)
+           .text(`Name: ${payment.userId.name}`, 50, 165)
+           .text(`Email: ${payment.userId.email}`, 50, 180)
+           .text(`Course: ${courseName}`, 50, 195);
+
+        // 4. Transaction Summary Table
+        doc.moveDown(2);
+        const tableTop = 230;
+        doc.fillColor("#F5F5F5").rect(50, tableTop, 500, 25).fill();
+        doc.fillColor("#1A237E").fontSize(10)
+           .text("DESCRIPTION", 60, tableTop + 7)
+           .text("PAYMENT MODE", 300, tableTop + 7)
+           .text("AMOUNT", 480, tableTop + 7);
+
+        doc.fillColor("#000000").fontSize(11)
+           .text(tx.type || "Installment Payment", 60, tableTop + 40)
+           .text(tx.method?.toUpperCase() || "CASH", 300, tableTop + 40)
+           .text(`₹${tx.amount}`, 480, tableTop + 40);
+
+        doc.rect(50, tableTop + 60, 500, 1).fill("#EEEEEE");
+
+        // 5. Grand Totals 
+        doc.moveDown(3);
+        const summaryTop = doc.y + 20;
+        doc.fillColor("#000000").fontSize(10)
+           .text("Total Course Fees:", 350, summaryTop)
+           .text(`₹${totalFees}`, 480, summaryTop)
+           .text("Currently Paid Total:", 350, summaryTop + 20)
+           .text(`₹${payment.paidAmount}`, 480, summaryTop + 20);
+
+        doc.fillColor("#B71C1C").fontSize(12).font("Helvetica-Bold")
+           .text("BALANCE DUE:", 350, summaryTop + 45)
+           .text(`₹${remaining}`, 480, summaryTop + 45);
+
+        // 6. Footer & Stamp Area
+        doc.font("Helvetica").fontSize(8).fillColor("#999999")
+           .text("--------------------------------------------------", 50, 680)
+           .text("This is a computer generated receipt. No signature required.", 50, 690, { align: "center", width: 500 });
+
+        doc.fontSize(12).fillColor("#1A237E").text("PAID", 450, 630, { characterSpacing: 5 });
 
         doc.end();
     } catch (err) {
