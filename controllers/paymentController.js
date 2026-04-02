@@ -12,7 +12,7 @@ exports.getPaymentDashboard = async (req, res, next) => {
     try {
         const { userId } = req.params;
         const payment = await Payment.findOne({ userId })
-            .populate("courseId", "title isActive")
+            .populate("courseId", "title isActive amount")
             .sort({ createdAt: -1 });
 
         if (!payment) {
@@ -22,15 +22,26 @@ exports.getPaymentDashboard = async (req, res, next) => {
                 let totalFees = 0;
                 let courseName = user.courseName || "N/A";
 
-                if (user.courseId) {
-                    const course = await Course.findOne({ courseId: user.courseId });
-                    if (course) {
-                        totalFees = course.amount;
-                        courseName = course.title || course.name || courseName;
+                if (user.courseId || courseName !== "N/A") {
+                    const Course = require("../models/Course");
+                    const CourseCategory = require("../models/CourseCategory");
+                    let doc = null;
+                    if (user.courseId) {
+                        doc = await Course.findOne({ courseId: user.courseId });
+                        if (!doc) doc = await CourseCategory.findOne({ courseId: user.courseId });
+                    }
+                    if (!doc && courseName !== "N/A") {
+                        doc = await Course.findOne({ title: courseName });
+                        if (!doc) doc = await CourseCategory.findOne({ name: courseName });
+                    }
+
+                    if (doc) {
+                        totalFees = doc.amount || doc.fees || 0;
+                        courseName = doc.title || doc.name || courseName;
                     }
                 }
 
-                if (totalFees > 0) {
+                if (totalFees > 0 || courseName !== "N/A") {
                     return res.json({
                         success: true,
                         data: {
@@ -39,7 +50,13 @@ exports.getPaymentDashboard = async (req, res, next) => {
                             remainingAmount: totalFees,
                             status: "pending",
                             courseName,
-                            nextInstallmentDate: null
+                            nextInstallmentDate: (() => {
+                                const d = new Date();
+                                d.setMonth(d.getMonth() + 1);
+                                d.setDate(10);
+                                d.setHours(0, 0, 0, 0);
+                                return d;
+                            })()
                         },
                     });
                 }
@@ -60,17 +77,75 @@ exports.getPaymentDashboard = async (req, res, next) => {
         const end = new Date(payment.endDate);
         const daysLeft = Math.max(0, Math.ceil((end - today) / (1000 * 60 * 60 * 24)));
 
+        // Calculate next installment date: 10th of the next month
+        const nextInstallmentDate = new Date(today);
+        nextInstallmentDate.setMonth(nextInstallmentDate.getMonth() + 1);
+        nextInstallmentDate.setDate(10);
+        nextInstallmentDate.setHours(0, 0, 0, 0);
+
+        // 🔹 Self-heal totalFees and courseName if they are missing or 0
+        let totalFees = payment.totalFees || 0;
+        let courseName = payment.courseId?.title || payment.courseId?.name || "N/A";
+
+        if (totalFees === 0 || courseName === "N/A") {
+            // First check the populated object (if any)
+            if (payment.courseId) {
+                if (totalFees === 0) totalFees = payment.courseId.amount || payment.courseId.fees || 0;
+                if (courseName === "N/A") courseName = payment.courseId.title || payment.courseId.name || "N/A";
+            }
+            
+            // Second layer of self-heal using database lookups (Course or CourseCategory)
+            if (totalFees === 0 || courseName === "N/A") {
+                const user = await User.findById(userId).select("courseId courseName");
+                const Course = require("../models/Course");
+                const CourseCategory = require("../models/CourseCategory");
+
+                // 1. Try by ObjectId from payment record (it might be a Course or a Category)
+                if (payment.courseId && typeof payment.courseId === "object") {
+                   const refId = payment.courseId._id || payment.courseId;
+                   let refDoc = await Course.findById(refId);
+                   if (!refDoc) refDoc = await CourseCategory.findById(refId);
+                   
+                   if (refDoc) {
+                       if (totalFees === 0) totalFees = refDoc.amount || refDoc.fees || 0;
+                       if (courseName === "N/A") courseName = refDoc.title || refDoc.name || "N/A";
+                   }
+                }
+
+                // 2. Try by User's numeric courseId or title
+                if (totalFees === 0 || courseName === "N/A") {
+                    if (user) {
+                        let doc = null;
+                        if (user.courseId) {
+                            doc = await Course.findOne({ courseId: user.courseId });
+                            if (!doc) doc = await CourseCategory.findOne({ courseId: user.courseId });
+                        }
+                        if (!doc && user.courseName) {
+                            doc = await Course.findOne({ title: user.courseName });
+                            if (!doc) doc = await CourseCategory.findOne({ name: user.courseName });
+                        }
+
+                        if (doc) {
+                            if (totalFees === 0) totalFees = doc.amount || doc.fees || 0;
+                            if (courseName === "N/A") courseName = doc.title || doc.name || "N/A";
+                        }
+                    }
+                }
+            }
+        }
+
+        const remainingAmount = Math.max(0, totalFees - payment.paidAmount);
+
         res.json({
             success: true,
             data: {
-                totalFees: payment.totalFees,
+                totalFees,
                 paidAmount: payment.paidAmount,
-                remainingAmount: payment.remainingAmount,
+                remainingAmount,
                 daysLeft,
                 status: payment.status,
-                courseName: payment.courseId?.title || "N/A",
-                nextInstallmentDate: payment.nextInstallmentDate || null,
-                paymentDeadline: payment.nextInstallmentDate || payment.endDate // Explicitly mapping deadline
+                courseName,
+                nextInstallmentDate,
             },
         });
     } catch (err) {
