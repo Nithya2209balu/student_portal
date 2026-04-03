@@ -5,20 +5,21 @@ const fs = require("fs");
 // ── Upload Document ──────────────────────────────────────────────────────────
 exports.uploadDocument = async (req, res, next) => {
     try {
-        const { userId } = req.params;
-        const { courseId } = req.body;
+        let { courseName } = req.body;
 
         if (!req.file) {
             return res.status(400).json({ success: false, message: "Please upload a PDF file" });
         }
 
-        if (!courseId) {
-            return res.status(400).json({ success: false, message: "courseId is required" });
+        if (!courseName) {
+            return res.status(400).json({ success: false, message: "courseName is required" });
         }
 
+        // Clean courseName (strip surrounding quotes if any)
+        courseName = courseName.trim().replace(/^"(.*)"$/, "$1");
+
         const document = await Document.create({
-            userId,
-            courseId,
+            courseName: courseName.trim(),
             fileName: req.file.originalname,
             fileUrl: `uploads/docs/${req.file.filename}`,
         });
@@ -27,8 +28,7 @@ exports.uploadDocument = async (req, res, next) => {
             success: true,
             message: "Document uploaded successfully",
             data: {
-                userId: document.userId,
-                courseId: document.courseId,
+                courseName: document.courseName,
                 fileUrl: document.fileUrl,
             },
         });
@@ -37,16 +37,30 @@ exports.uploadDocument = async (req, res, next) => {
     }
 };
 
-// ── Get Documents by User ────────────────────────────────────────────────────
+// ── Get Documents by User (Fetches Course-wide Documents) ────────────────────
 exports.getDocuments = async (req, res, next) => {
     try {
         const { userId } = req.params;
+        const User = require("../models/User");
 
-        const documents = await Document.find({ userId }).sort({ uploadedAt: -1 });
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        const courseName = user.courseName ? user.courseName.trim() : null;
+        if (!courseName) {
+            return res.json({ success: true, data: [] });
+        }
+
+        // Fetch all documents matching this user's courseName (case-insensitive)
+        const documents = await Document.find({ 
+            courseName: { $regex: new RegExp("^" + courseName + "$", "i") } 
+        }).sort({ uploadedAt: -1 });
 
         const data = documents.map((doc) => ({
             documentId: doc._id,
-            courseId: doc.courseId,
+            courseName: doc.courseName,
             fileUrl: doc.fileUrl,
             uploadedAt: doc.uploadedAt.toISOString().split("T")[0],
         }));
@@ -63,16 +77,12 @@ exports.getDocuments = async (req, res, next) => {
 // ── Download Document ────────────────────────────────────────────────────────
 exports.downloadDocument = async (req, res, next) => {
     try {
-        const { userId, documentId } = req.params;
+        const { documentId } = req.params;
 
         const document = await Document.findById(documentId);
 
         if (!document) {
             return res.status(404).json({ success: false, message: "Document not found" });
-        }
-
-        if (document.userId.toString() !== userId) {
-            return res.status(403).json({ success: false, message: "Unauthorized access to this document" });
         }
 
         const filePath = path.join(__dirname, "..", document.fileUrl);

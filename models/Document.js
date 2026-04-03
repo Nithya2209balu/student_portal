@@ -5,10 +5,10 @@ const documentSchema = new mongoose.Schema(
         userId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
-            required: true,
+            required: false, // Optional: for documents that might still be student-specific in future
         },
-        courseId: {
-            type: String, // Storing as string to handle both numeric courseId and ObjectId if needed
+        courseName: {
+            type: String,
             required: true,
         },
         fileName: {

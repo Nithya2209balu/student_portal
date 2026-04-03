@@ -31,13 +31,13 @@ const upload = multer({
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
-// POST /api/documents/upload/:userId
-router.post("/upload/:userId", upload.single("file"), documentController.uploadDocument);
+// POST /api/documents/upload
+router.post("/upload", upload.single("file"), documentController.uploadDocument);
 
 // GET /api/documents/:userId
 router.get("/:userId", documentController.getDocuments);
 
-// GET /api/documents/download/:userId/:documentId
-router.get("/download/:userId/:documentId", documentController.downloadDocument);
+// GET /api/documents/download/:documentId
+router.get("/download/:documentId", documentController.downloadDocument);
 
 module.exports = router;
