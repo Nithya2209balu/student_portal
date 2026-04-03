@@ -16,12 +16,12 @@ exports.createTask = async (req, res, next) => {
             return res.status(400).json({ success: false, message: "title, description, and createdBy are required" });
         }
 
-        let imageUrl = req.body.imageUrl || null;
+        let imageUrls = [];
         let documentUrl = req.body.documentUrl || null;
 
         if (req.files) {
-            if (req.files.image && req.files.image[0]) {
-                imageUrl = buildUrl(req, req.files.image[0].filename);
+            if (req.files.image && req.files.image.length > 0) {
+                imageUrls = req.files.image.map(file => buildUrl(req, file.filename));
             }
             if (req.files.document && req.files.document[0]) {
                 documentUrl = buildUrl(req, req.files.document[0].filename);
@@ -31,7 +31,7 @@ exports.createTask = async (req, res, next) => {
         const task = await Task.create({
             title,
             description,
-            imageUrl,
+            imageUrls,
             documentUrl,
             createdBy
         });
@@ -88,13 +88,18 @@ exports.updateTask = async (req, res, next) => {
         if (title) task.title = title;
         if (description) task.description = description;
         if (createdBy) task.createdBy = createdBy;
-        if (req.body.imageUrl) task.imageUrl = req.body.imageUrl;
+        
+        // Handle incoming URLs if they are passed as strings or arrays in req.body
+        if (req.body.imageUrls) {
+            task.imageUrls = Array.isArray(req.body.imageUrls) ? req.body.imageUrls : [req.body.imageUrls];
+        }
         if (req.body.documentUrl) task.documentUrl = req.body.documentUrl;
 
-        // If new files are uploaded, update the URLs
+        // If new files are uploaded, append/replace the URLs
         if (req.files) {
-            if (req.files.image && req.files.image[0]) {
-                task.imageUrl = buildUrl(req, req.files.image[0].filename);
+            if (req.files.image && req.files.image.length > 0) {
+                const newImageUrls = req.files.image.map(file => buildUrl(req, file.filename));
+                task.imageUrls = [...task.imageUrls, ...newImageUrls];
             }
             if (req.files.document && req.files.document[0]) {
                 task.documentUrl = buildUrl(req, req.files.document[0].filename);
@@ -136,6 +141,28 @@ exports.getAdminTaskDashboard = async (req, res, next) => {
             success: true,
             data: { totalTasks }
         });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * DELETE /api/tasks/:userId/:taskId
+ * Delete task based on user and task ID
+ */
+exports.deleteTask = async (req, res, next) => {
+    try {
+        const { userId, taskId } = req.params;
+        const task = await Task.findOneAndDelete({ _id: taskId, createdBy: userId });
+        
+        if (!task) {
+            return res.status(404).json({ 
+                success: false, 
+                message: "Task not found or you don't have permission to delete it" 
+            });
+        }
+
+        res.json({ success: true, message: "Task deleted successfully" });
     } catch (err) {
         next(err);
     }

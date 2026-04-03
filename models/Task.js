@@ -4,7 +4,7 @@ const taskSchema = new mongoose.Schema(
     {
         title: { type: String, required: true },
         description: { type: String, required: true },
-        imageUrl: { type: String },
+        imageUrls: [{ type: String }],
         documentUrl: { type: String },
         createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     },
