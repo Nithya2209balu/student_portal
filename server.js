@@ -6,9 +6,8 @@ const errorHandler = require("./middlewares/errorHandler");
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 connectDB();
-
-// ── Cron Scheduler (Automated Notifications) ──────────────────────────────────
-require("./config/cron");
+const { initCronJobs } = require("./config/cron");
+initCronJobs();
 
 const app = express();
 

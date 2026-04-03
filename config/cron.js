@@ -4,57 +4,49 @@ const Notification = require("../models/Notification");
 const { sendPushNotifications } = require("./notifications");
 
 /**
- * Scheduled Tasks
+ * Scheduled Jobs
  */
+const initCronJobs = () => {
+    const sendTestNotification = async (reason = "Scheduled 5m") => {
+        try {
+            console.log(`🕒 Automated Job [${reason}]: Sending test notification...`);
 
-// 1. Test Automated Notification for today at 2:30 PM (14:30)
-// Format: minute hour day-of-month month day-of-week
-cron.schedule("30 14 * * *", async () => {
-    console.log("⏰ [CRON] Running scheduled test notification (2:30 PM)...");
-    try {
-        const title = "Test Automated Notification 2:30 PM";
-        const message = "This is a scheduled test notification to verify the automation system.";
+            // Fetch all users with a valid FCM token
+            const users = await User.find({ fcmToken: { $exists: true, $ne: "" } }).select("fcmToken name");
+            const targetTokens = users.map(u => u.fcmToken);
 
-        // Fetch all users with a device token
-        const users = await User.find({ fcmToken: { $exists: true, $ne: "" } }).select("fcmToken");
-        const targetTokens = users.map(u => u.fcmToken);
+            if (targetTokens.length === 0) {
+                console.log(`⚠️ Automated Job [${reason}]: No FCM tokens found to notify.`);
+                return;
+            }
 
-        if (targetTokens.length > 0) {
-            console.log(`📡 [CRON] Sending push to ${targetTokens.length} devices...`);
+            const title = "Automated Test 🔔";
+            const message = `Test notification [${reason}] sent at ${new Date().toLocaleTimeString()} for testing purposes.`;
+
+            // Trigger Push Notification
             await sendPushNotifications(targetTokens, title, message);
-            
+
             // Save to Notification History
             await Notification.create({
                 title,
                 message,
                 targetAll: true,
+                userId: null
             });
-            console.log("✅ [CRON] Test notification sent and logged.");
-        } else {
-            console.warn("⚠️ [CRON] No FCM tokens found to send notification.");
+
+            console.log(`✅ Automated Job [${reason}]: Test notification sent to ${targetTokens.length} users.`);
+        } catch (err) {
+            console.error(`❌ Automated Job [${reason}] Error:`, err.message);
         }
-    } catch (err) {
-        console.error("❌ [CRON] Error sending scheduled notification:", err.message);
-    }
-});
+    };
 
-// 2. Real Logic: Automatic Notification on 10th of every month at 10 AM
-cron.schedule("0 10 10 * *", async () => {
-    console.log("⏰ [CRON] Running monthly installment reminder (10th at 10 AM)...");
-    try {
-        const title = "Installment Payment Reminder";
-        const message = "The 10th of the month is here. Please check your payment dashboard for any pending installments.";
+    // Run once immediately on start for testing
+    sendTestNotification("Server Start");
 
-        const users = await User.find({ fcmToken: { $exists: true, $ne: "" } }).select("fcmToken");
-        const targetTokens = users.map(u => u.fcmToken);
+    // 1. Every 5 Minutes (Continuous)
+    cron.schedule("*/5 * * * *", () => sendTestNotification("Scheduled 5m"));
 
-        if (targetTokens.length > 0) {
-            await sendPushNotifications(targetTokens, title, message);
-            await Notification.create({ title, message, targetAll: true });
-        }
-    } catch (err) {
-        console.error("❌ [CRON] Error in monthly reminder:", err.message);
-    }
-});
+    console.log("✅ Cron Jobs initialized (Immediate + 5-minute continuous test notification)");
+};
 
-console.log("📅 [CRON] Scheduler initialized.");
+module.exports = { initCronJobs };
