@@ -52,7 +52,13 @@ exports.createTask = async (req, res, next) => {
  */
 exports.getTasks = async (req, res, next) => {
     try {
-        const tasks = await Task.find().sort({ createdAt: -1 });
+        const { userId, createdBy } = req.query;
+        let query = {};
+        
+        if (userId) query.createdBy = userId;
+        if (createdBy) query.createdBy = createdBy;
+
+        const tasks = await Task.find(query).sort({ createdAt: -1 });
         res.json({ success: true, count: tasks.length, data: tasks });
     } catch (err) {
         next(err);
