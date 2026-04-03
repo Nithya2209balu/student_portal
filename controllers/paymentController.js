@@ -202,24 +202,28 @@ exports.getPaymentHistory = async (req, res, next) => {
             }
         }
 
-        const transactions = payment.transactions.map(tx => ({
-            _id: tx._id,
-            transactionId: tx._id,
-            paymentId: payment._id,
-            date: tx.date,
-            method: tx.method,
-            type: tx.type || "Installment",
-            receiptId: tx.receiptId || `REC-${Math.floor(1000 + Math.random() * 9000)}`,
-            status: tx.status || "success",
-            courseName: dynamicCourseTitle,
-            totalAmount: dynamicFees,
-            paidAmount: payment.paidAmount,
-            pendingAmount: Math.max(0, dynamicFees - payment.paidAmount)
-        }));
+        let cumulativePaid = 0;
+        const transactions = payment.transactions.map(tx => {
+            cumulativePaid += tx.amount;
+            return {
+                _id: tx._id,
+                transactionId: tx._id,
+                paymentId: payment._id,
+                date: tx.date,
+                method: tx.method,
+                type: tx.type || "Installment",
+                receiptId: tx.receiptId || `REC-${Math.floor(1000 + Math.random() * 9000)}`,
+                status: tx.status || "success",
+                courseName: dynamicCourseTitle,
+                totalAmount: dynamicFees,
+                paidAmount: tx.amount,
+                pendingAmount: Math.max(0, dynamicFees - cumulativePaid)
+            };
+        });
 
         res.json({
             success: true,
-            transactions: transactions,
+            transactions: transactions.reverse(),
         });
     } catch (err) {
         next(err);
