@@ -34,6 +34,9 @@ const upload = multer({
 // POST /api/documents/upload
 router.post("/upload", upload.single("file"), documentController.uploadDocument);
 
+// GET /api/documents/admin/all (For Admin panel)
+router.get("/admin/all", documentController.getAllDocuments);
+
 // GET /api/documents/:userId
 router.get("/:userId", documentController.getDocuments);
 

@@ -37,6 +37,28 @@ exports.uploadDocument = async (req, res, next) => {
     }
 };
 
+// ── Get All Documents (Admin) ────────────────────────────────────────────────
+exports.getAllDocuments = async (req, res, next) => {
+    try {
+        const documents = await Document.find({}).sort({ uploadedAt: -1 });
+
+        const data = documents.map((doc) => ({
+            documentId: doc._id,
+            courseName: doc.courseName,
+            fileName: doc.fileName,
+            fileUrl: doc.fileUrl,
+            uploadedAt: doc.uploadedAt,
+        }));
+
+        res.status(200).json({
+            success: true,
+            data,
+        });
+    } catch (err) {
+        next(err);
+    }
+};
+
 // ── Get Documents by User (Fetches Course-wide Documents) ────────────────────
 exports.getDocuments = async (req, res, next) => {
     try {
