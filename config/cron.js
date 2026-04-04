@@ -16,7 +16,7 @@ const initCronJobs = () => {
             const targetTokens = users.map(u => u.fcmToken);
 
             if (targetTokens.length === 0) {
-                console.log(`⚠️ Automated Job [${reason}]: No FCM tokens found to notify.`);
+                console.log(`⚠️ Automated Job [${reason}]: No FCM token s found to notify.`);
                 return;
             }
 
