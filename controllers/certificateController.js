@@ -73,7 +73,9 @@ exports.getRequests = async (req, res, next) => {
             query.status = status;
         }
 
-        const requests = await CertificateRequest.find(query).sort({ createdAt: -1 }).populate("userId", "name email");
+        const requests = await CertificateRequest.find(query)
+            .sort({ createdAt: -1 })
+            .populate("userId", "name email courseName courseDuration");
 
         res.status(200).json({
             success: true,
@@ -117,10 +119,14 @@ exports.createCertificate = async (req, res, next) => {
             return res.status(400).json({ success: false, message: "requestId and courseName are required" });
         }
 
-        const request = await CertificateRequest.findById(requestId);
+        const request = await CertificateRequest.findById(requestId).populate("userId");
         if (!request) {
             return res.status(404).json({ success: false, message: "Certificate request not found" });
         }
+
+        const user = request.userId;
+        const finalCourseName = courseName || user.courseName || "Unknown Course";
+        const finalDuration = duration || user.courseDuration || "";
 
         if (request.status === "Approved") {
             return res.status(400).json({ success: false, message: "This request has already been approved." });
@@ -145,11 +151,11 @@ exports.createCertificate = async (req, res, next) => {
 
         const pdfData = {
             studentName: request.studentName,
-            courseName,
+            courseName: finalCourseName,
             certificateNumber,
             issueDate,
             content,
-            duration
+            duration: finalDuration
         };
 
         // Generate the PDF file asynchronously
@@ -157,12 +163,12 @@ exports.createCertificate = async (req, res, next) => {
 
         // Save DB Record
         const certificate = await Certificate.create({
-            userId: request.userId,
+            userId: user._id,
             requestId: request._id,
             certificateNumber,
-            courseName,
+            courseName: finalCourseName,
             content,
-            duration,
+            duration: finalDuration,
             fileUrl,
         });
 
