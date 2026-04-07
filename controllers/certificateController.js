@@ -87,6 +87,23 @@ exports.getRequests = async (req, res, next) => {
     }
 };
 
+// ── 2b. Get All Completed Certificates (Admin/HR) ─────────────────────────────
+exports.getAllCertificates = async (req, res, next) => {
+    try {
+        const certificates = await Certificate.find()
+            .sort({ issuedAt: -1 })
+            .populate("userId", "name email courseName");
+
+        res.status(200).json({
+            success: true,
+            count: certificates.length,
+            data: certificates,
+        });
+    } catch (err) {
+        next(err);
+    }
+};
+
 // ── Helper: 3. Generate Certificate ID ────────────────────────────────────────
 const generateCertificateId = async () => {
     const currentYear = new Date().getFullYear();

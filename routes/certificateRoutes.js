@@ -12,6 +12,8 @@ router.get("/dashboard", certificateController.getDashboardStats);
 router.post("/requests", protect, certificateController.requestCertificate);
 // Admin: View all request (supports ?status=Pending)
 router.get("/requests", certificateController.getRequests);
+// Admin: View all issued certificates
+router.get("/all", certificateController.getAllCertificates);
 
 // ── Certificates ────────────────────────────────────────────────────
 // Admin: Generate a new certificate and linked PDF
