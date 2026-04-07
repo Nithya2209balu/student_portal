@@ -3,6 +3,10 @@ const router = express.Router();
 const certificateController = require("../controllers/certificateController");
 const { protect } = require("../middlewares/auth");
 
+// ── Dashboard ───────────────────────────────────────────────────────
+// Admin: Get stats for the dashboard
+router.get("/dashboard", certificateController.getDashboardStats);
+
 // ── Requests ────────────────────────────────────────────────────────
 // Student: Create a new certificate request
 router.post("/requests", protect, certificateController.requestCertificate);

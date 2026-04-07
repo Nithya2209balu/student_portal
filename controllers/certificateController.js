@@ -5,6 +5,26 @@ const { generateCertificate } = require("../utils/pdfGenerator");
 const path = require("path");
 const fs = require("fs");
 
+// ── 0. Dashboard Stats (Admin/HR) ───────────────────────────────────────────
+exports.getDashboardStats = async (req, res, next) => {
+    try {
+        const totalRequests = await CertificateRequest.countDocuments();
+        const pendingRequests = await CertificateRequest.countDocuments({ status: "Pending" });
+        const completedCertificates = await Certificate.countDocuments();
+
+        res.status(200).json({
+            success: true,
+            data: {
+                totalRequests,
+                pendingRequests,
+                completedCertificates,
+            }
+        });
+    } catch (err) {
+        next(err);
+    }
+};
+
 // ── 1. Request Certificate (Student) ──────────────────────────────────────────
 exports.requestCertificate = async (req, res, next) => {
     try {
