@@ -22,5 +22,7 @@ router.post("/generate", certificateController.createCertificate);
 router.get("/user/:userId", certificateController.getCertificate);
 // Student: Download secure PDF
 router.get("/download/:certId", protect, certificateController.downloadCertificate);
+// Admin/Student: View PDF inline in browser
+router.get("/view/:certId", protect, certificateController.viewCertificate);
 
 module.exports = router;

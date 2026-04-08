@@ -245,3 +245,33 @@ exports.downloadCertificate = async (req, res, next) => {
         next(err);
     }
 };
+
+// ── 7. View Certificate (Inline Browser Preview) ──────────────────────────────
+exports.viewCertificate = async (req, res, next) => {
+    try {
+        const { certId } = req.params;
+        const loggedInUserId = req.user.id;
+
+        const certificate = await Certificate.findById(certId);
+        if (!certificate) {
+            return res.status(404).json({ success: false, message: "Certificate not found" });
+        }
+
+        // Security: Ensure only the owner or an admin can view it
+        if (certificate.userId.toString() !== loggedInUserId && req.user.role !== "admin") {
+            return res.status(403).json({ success: false, message: "Unauthorized to view this certificate." });
+        }
+
+        const absolutePath = path.join(__dirname, "..", certificate.fileUrl);
+        if (fs.existsSync(absolutePath)) {
+            // Send file with 'inline' disposition to open in browser
+            res.setHeader("Content-Type", "application/pdf");
+            res.setHeader("Content-Disposition", "inline; filename=" + certificate.certificateNumber + ".pdf");
+            res.sendFile(absolutePath);
+        } else {
+            res.status(404).json({ success: false, message: "PDF file not found on disk." });
+        }
+    } catch (err) {
+        next(err);
+    }
+};
