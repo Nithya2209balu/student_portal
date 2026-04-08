@@ -219,20 +219,14 @@ exports.getCertificate = async (req, res, next) => {
     }
 };
 
-// ── 6. Download Certificate (Secure) ──────────────────────────────────────────
+// ── 6. Download Certificate ────────────────────────────────────────────────
 exports.downloadCertificate = async (req, res, next) => {
     try {
         const { certId } = req.params;
-        const loggedInUserId = req.user.id;
 
         const certificate = await Certificate.findById(certId);
         if (!certificate) {
             return res.status(404).json({ success: false, message: "Certificate not found" });
-        }
-
-        // Security: Ensure only the owner or an admin can download it
-        if (certificate.userId.toString() !== loggedInUserId && req.user.role !== "admin") {
-            return res.status(403).json({ success: false, message: "Unauthorized to download this certificate." });
         }
 
         const absolutePath = path.join(__dirname, "..", certificate.fileUrl);
@@ -250,21 +244,14 @@ exports.downloadCertificate = async (req, res, next) => {
 exports.viewCertificate = async (req, res, next) => {
     try {
         const { certId } = req.params;
-        const loggedInUserId = req.user.id;
 
         const certificate = await Certificate.findById(certId);
         if (!certificate) {
             return res.status(404).json({ success: false, message: "Certificate not found" });
         }
 
-        // Security: Ensure only the owner or an admin can view it
-        if (certificate.userId.toString() !== loggedInUserId && req.user.role !== "admin") {
-            return res.status(403).json({ success: false, message: "Unauthorized to view this certificate." });
-        }
-
         const absolutePath = path.join(__dirname, "..", certificate.fileUrl);
         if (fs.existsSync(absolutePath)) {
-            // Send file with 'inline' disposition to open in browser
             res.setHeader("Content-Type", "application/pdf");
             res.setHeader("Content-Disposition", "inline; filename=" + certificate.certificateNumber + ".pdf");
             res.sendFile(absolutePath);
