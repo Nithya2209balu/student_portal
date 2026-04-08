@@ -185,9 +185,9 @@ exports.createCertificate = async (req, res, next) => {
         // Generate the PDF file
         await generateCertificate(pdfData, tempFilePath);
 
-        // Upload to Cloudinary (public access so anyone with the link can view)
+        // Upload to Cloudinary (as image so PDFs are publicly accessible)
         const cloudResult = await cloudinary.uploader.upload(tempFilePath, {
-            resource_type: "raw",
+            resource_type: "image",
             type: "upload",
             access_mode: "public",
             folder: "certificates",
