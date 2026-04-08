@@ -230,8 +230,8 @@ exports.downloadCertificate = async (req, res, next) => {
             return res.status(404).json({ success: false, message: "Certificate not found" });
         }
 
-        // Security: Ensure only the owner can download it
-        if (certificate.userId.toString() !== loggedInUserId) {
+        // Security: Ensure only the owner or an admin can download it
+        if (certificate.userId.toString() !== loggedInUserId && req.user.role !== "admin") {
             return res.status(403).json({ success: false, message: "Unauthorized to download this certificate." });
         }
 
