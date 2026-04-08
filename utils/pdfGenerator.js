@@ -3,20 +3,14 @@ const fs = require("fs");
 const path = require("path");
 
 /**
- * Generates a styled PDF certificate
+ * Generates a styled PDF certificate and pipes it to a stream
  * @param {Object} data - Contains studentName, courseName, certificateNumber, issueDate, content, duration
- * @param {String} outputPath - Absolute or relative path where the PDF should be saved
- * @returns {Promise<String>} - The path of the saved file
+ * @param {Stream|String} outputDest - Writable stream (e.g. res) or string file path
+ * @returns {Promise<void>} 
  */
-const generateCertificate = (data, outputPath) => {
+const generateCertificate = (data, outputDest) => {
     return new Promise((resolve, reject) => {
         try {
-            // Ensure directory exists
-            const dir = path.dirname(outputPath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-            }
-
             // Create a document in Landscape mode
             const doc = new PDFDocument({
                 size: "A4",
@@ -24,7 +18,15 @@ const generateCertificate = (data, outputPath) => {
                 margin: 0,
             });
 
-            const stream = fs.createWriteStream(outputPath);
+            let stream;
+            if (typeof outputDest === "string") {
+                const dir = path.dirname(outputDest);
+                if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+                stream = fs.createWriteStream(outputDest);
+            } else {
+                stream = outputDest; // Directly pass the Express `res` object
+            }
+            
             doc.pipe(stream);
 
             const { studentName, courseName, certificateNumber, issueDate, content, duration } = data;
@@ -155,8 +157,14 @@ const generateCertificate = (data, outputPath) => {
 
             doc.end();
 
-            stream.on("finish", () => resolve(outputPath));
-            stream.on("error", (err) => reject(err));
+            if (typeof outputDest === "string") {
+                stream.on("finish", () => resolve(outputDest));
+                stream.on("error", (err) => reject(err));
+            } else {
+                // If piping directly to res, resolve immediately after generating
+                // The stream will handle the HTTP sending
+                resolve();
+            }
         } catch (error) {
             reject(error);
         }

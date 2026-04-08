@@ -162,47 +162,7 @@ exports.createCertificate = async (req, res, next) => {
         // Generate ID
         const certificateNumber = await generateCertificateId();
 
-        // Generate PDF to a temp file
-        const tempDir = os.tmpdir();
-        const fileName = `${certificateNumber}.pdf`;
-        const tempFilePath = path.join(tempDir, fileName);
-
-        // Format Date
-        const issueDate = new Date().toLocaleDateString("en-GB", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric"
-        }); // DD/MM/YYYY
-
-        const pdfData = {
-            studentName: request.studentName,
-            courseName: finalCourseName,
-            certificateNumber,
-            issueDate,
-            content,
-            duration: finalDuration
-        };
-
-        // Generate the PDF file
-        await generateCertificate(pdfData, tempFilePath);
-
-        // Upload to Cloudinary (as image so PDFs are publicly accessible)
-        const cloudResult = await cloudinary.uploader.upload(tempFilePath, {
-            resource_type: "image",
-            type: "upload",
-            access_mode: "public",
-            folder: "certificates",
-            public_id: certificateNumber,
-        });
-
-        // Clean up temp file
-        if (fs.existsSync(tempFilePath)) {
-            fs.unlinkSync(tempFilePath);
-        }
-
-        const fileUrl = cloudResult.secure_url;
-
-        // Save DB Record
+        // Save DB Record with empty fileUrl (we generate on-the-fly now)
         const certificate = await Certificate.create({
             userId: user._id,
             requestId: request._id,
@@ -210,7 +170,7 @@ exports.createCertificate = async (req, res, next) => {
             courseName: finalCourseName,
             content,
             duration: finalDuration,
-            fileUrl,
+            fileUrl: "" 
         });
 
         // Update Request Status
@@ -248,39 +208,33 @@ exports.downloadCertificate = async (req, res, next) => {
     try {
         const { certId } = req.params;
         console.log(certId, "<-cert");
-        const certificate = await Certificate.findById(certId);
+        const certificate = await Certificate.findById(certId).populate("requestId");
 
         if (!certificate) {
             return res.status(404).json({ success: false, message: "Certificate not found" });
         }
 
-        // Generate a Signed URL to fetch even if the asset is restricted
-        const publicId = `certificates/${certificate.certificateNumber}`;
-        const signedUrl = cloudinary.url(publicId, {
-            resource_type: "image", // We uploaded as image
-            sign_url: true,
-            secure: true
+        const issueDate = certificate.issuedAt.toLocaleDateString("en-GB", {
+            day: "2-digit", month: "2-digit", year: "numeric"
         });
 
-        console.log("Fetching Signed URL:", signedUrl);
-
-        // Fetch PDF from Cloudinary and stream it to the browser as a download
-        const response = await axios({
-            method: "get",
-            url: signedUrl,
-            responseType: "stream",
-        });
+        const pdfData = {
+            studentName: certificate.requestId?.studentName || "Student",
+            courseName: certificate.courseName,
+            certificateNumber: certificate.certificateNumber,
+            issueDate,
+            content: certificate.content,
+            duration: certificate.duration
+        };
 
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", `attachment; filename=${certificate.certificateNumber}.pdf`);
-        
-        response.data.pipe(res);
+
+        // Generate on-the-fly and pipe directly to response
+        await generateCertificate(pdfData, res);
     } catch (err) {
         console.error("Download Error:", err.message);
-        res.status(err.response?.status || 500).json({
-            success: false,
-            message: err.message
-        });
+        res.status(500).json({ success: false, message: "Error generating certificate" });
     }
 };
 
@@ -290,39 +244,33 @@ exports.viewCertificate = async (req, res, next) => {
         const { certId } = req.params;
 
         console.log(certId, "<-cert");
-        const certificate = await Certificate.findById(certId);
+        const certificate = await Certificate.findById(certId).populate("requestId");
         console.log(certificate, "<-certificate");
 
         if (!certificate) {
             return res.status(404).json({ success: false, message: "Certificate not found" });
         }
 
-        // Generate a Signed URL to fetch even if the asset is restricted
-        const publicId = `certificates/${certificate.certificateNumber}`;
-        const signedUrl = cloudinary.url(publicId, {
-            resource_type: "image", // We uploaded as image
-            sign_url: true,
-            secure: true
+        const issueDate = certificate.issuedAt.toLocaleDateString("en-GB", {
+            day: "2-digit", month: "2-digit", year: "numeric"
         });
 
-        console.log("Viewing Signed URL:", signedUrl);
-
-        // Fetch PDF from Cloudinary and stream it directly to the browser
-        const response = await axios({
-            method: "get",
-            url: signedUrl,
-            responseType: "stream",
-        });
+        const pdfData = {
+            studentName: certificate.requestId?.studentName || "Student",
+            courseName: certificate.courseName,
+            certificateNumber: certificate.certificateNumber,
+            issueDate,
+            content: certificate.content,
+            duration: certificate.duration
+        };
 
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", "inline");
 
-        response.data.pipe(res);
+        // Generate on-the-fly and pipe directly to response
+        await generateCertificate(pdfData, res);
     } catch (err) { 
         console.log("View Error:", err.message);
-        res.status(err.response?.status || 500).json({
-            success: false,
-            message: err.message
-        });
+        res.status(500).json({ success: false, message: "Error generating certificate" });
     }
 };
