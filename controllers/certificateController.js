@@ -2,8 +2,17 @@ const CertificateRequest = require("../models/CertificateRequest");
 const Certificate = require("../models/Certificate");
 const User = require("../models/User");
 const { generateCertificate } = require("../utils/pdfGenerator");
+const cloudinary = require("cloudinary").v2;
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
+
+// Configure Cloudinary
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 // ── 0. Dashboard Stats (Admin/HR) ───────────────────────────────────────────
 exports.getDashboardStats = async (req, res, next) => {
@@ -152,12 +161,10 @@ exports.createCertificate = async (req, res, next) => {
         // Generate ID
         const certificateNumber = await generateCertificateId();
         
-        // Prepare PDF path
+        // Generate PDF to a temp file
+        const tempDir = os.tmpdir();
         const fileName = `${certificateNumber}.pdf`;
-        // Keeping in uploads/docs to match existing static serving config
-        const fileDir = path.join(__dirname, "..", "uploads", "docs", "certificates"); 
-        const filePath = path.join(fileDir, fileName);
-        const fileUrl = `uploads/docs/certificates/${fileName}`;
+        const tempFilePath = path.join(tempDir, fileName);
 
         // Format Date
         const issueDate = new Date().toLocaleDateString("en-GB", {
@@ -175,8 +182,22 @@ exports.createCertificate = async (req, res, next) => {
             duration: finalDuration
         };
 
-        // Generate the PDF file asynchronously
-        await generateCertificate(pdfData, filePath);
+        // Generate the PDF file
+        await generateCertificate(pdfData, tempFilePath);
+
+        // Upload to Cloudinary
+        const cloudResult = await cloudinary.uploader.upload(tempFilePath, {
+            resource_type: "raw",
+            folder: "certificates",
+            public_id: certificateNumber,
+        });
+
+        // Clean up temp file
+        if (fs.existsSync(tempFilePath)) {
+            fs.unlinkSync(tempFilePath);
+        }
+
+        const fileUrl = cloudResult.secure_url;
 
         // Save DB Record
         const certificate = await Certificate.create({
@@ -229,12 +250,8 @@ exports.downloadCertificate = async (req, res, next) => {
             return res.status(404).json({ success: false, message: "Certificate not found" });
         }
 
-        const absolutePath = path.join(__dirname, "..", certificate.fileUrl);
-        if (fs.existsSync(absolutePath)) {
-            res.download(absolutePath, `${certificate.certificateNumber}.pdf`);
-        } else {
-            res.status(404).json({ success: false, message: "PDF file not found on disk." });
-        }
+        // Redirect to the Cloudinary URL for download
+        res.redirect(certificate.fileUrl);
     } catch (err) {
         next(err);
     }
@@ -250,14 +267,8 @@ exports.viewCertificate = async (req, res, next) => {
             return res.status(404).json({ success: false, message: "Certificate not found" });
         }
 
-        const absolutePath = path.join(__dirname, "..", certificate.fileUrl);
-        if (fs.existsSync(absolutePath)) {
-            res.setHeader("Content-Type", "application/pdf");
-            res.setHeader("Content-Disposition", "inline; filename=" + certificate.certificateNumber + ".pdf");
-            res.sendFile(absolutePath);
-        } else {
-            res.status(404).json({ success: false, message: "PDF file not found on disk." });
-        }
+        // Redirect to the Cloudinary URL for viewing
+        res.redirect(certificate.fileUrl);
     } catch (err) {
         next(err);
     }
