@@ -43,8 +43,9 @@ try {
 
             admin.initializeApp({
                 credential: admin.credential.cert(serviceAccount),
+                storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
             });
-            console.log("🔥 Firebase Admin initialized successfully");
+            console.log(`🔥 Firebase Admin: Initialized with bucket: ${process.env.FIREBASE_STORAGE_BUCKET}`);
         } else {
             console.warn("⚠️ Firebase Admin: No credentials found (ENV or File). Notifications will fail.");
         }
@@ -52,5 +53,8 @@ try {
 } catch (error) {
     console.error("❌ Firebase Admin initialization error:", error.message);
 }
+
+// Export storage bucket directly to handle some edge cases in admin SDK
+const storage = admin.apps.length ? admin.storage() : null;
 
 module.exports = admin;

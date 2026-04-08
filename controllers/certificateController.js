@@ -3,6 +3,7 @@ const Certificate = require("../models/Certificate");
 const User = require("../models/User");
 const { generateCertificate } = require("../utils/pdfGenerator");
 const cloudinary = require("cloudinary").v2;
+const axios = require("axios");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -51,9 +52,9 @@ exports.requestCertificate = async (req, res, next) => {
         });
 
         if (existingRequest) {
-            return res.status(400).json({ 
-                success: false, 
-                message: `You already have a ${existingRequest.status.toLowerCase()} request.` 
+            return res.status(400).json({
+                success: false,
+                message: `You already have a ${existingRequest.status.toLowerCase()} request.`
             });
         }
 
@@ -160,7 +161,7 @@ exports.createCertificate = async (req, res, next) => {
 
         // Generate ID
         const certificateNumber = await generateCertificateId();
-        
+
         // Generate PDF to a temp file
         const tempDir = os.tmpdir();
         const fileName = `${certificateNumber}.pdf`;
@@ -246,15 +247,26 @@ exports.getCertificate = async (req, res, next) => {
 exports.downloadCertificate = async (req, res, next) => {
     try {
         const { certId } = req.params;
-
+        console.log(certId, "<-cert");
         const certificate = await Certificate.findById(certId);
+
         if (!certificate) {
             return res.status(404).json({ success: false, message: "Certificate not found" });
         }
 
-        // Redirect to the Cloudinary URL for download
-        res.redirect(certificate.fileUrl);
+        // Fetch PDF from Cloudinary and stream it to the browser as a download
+        const response = await axios({
+            method: "get",
+            url: certificate.fileUrl,
+            responseType: "stream",
+        });
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename=${certificate.certificateNumber}.pdf`);
+        
+        response.data.pipe(res);
     } catch (err) {
+        console.error("Download Error:", err.message);
         next(err);
     }
 };
@@ -264,14 +276,27 @@ exports.viewCertificate = async (req, res, next) => {
     try {
         const { certId } = req.params;
 
+        console.log(certId, "<-cert");
         const certificate = await Certificate.findById(certId);
+        console.log(certificate, "<-certificate");
+
         if (!certificate) {
             return res.status(404).json({ success: false, message: "Certificate not found" });
         }
 
-        // Redirect to the Cloudinary URL for viewing
-        res.redirect(certificate.fileUrl);
-    } catch (err) {
+        // Fetch PDF from Cloudinary and stream it directly to the browser (avoids CORS/Unsafe-Attempt errors)
+        const response = await axios({
+            method: "get",
+            url: certificate.fileUrl,
+            responseType: "stream",
+        });
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", "inline");
+
+        response.data.pipe(res);
+    } catch (err) { 
+        console.log(err, "<-err");
         next(err);
     }
 };
