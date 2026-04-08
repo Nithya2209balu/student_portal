@@ -254,10 +254,20 @@ exports.downloadCertificate = async (req, res, next) => {
             return res.status(404).json({ success: false, message: "Certificate not found" });
         }
 
+        // Generate a Signed URL to fetch even if the asset is restricted
+        const publicId = `certificates/${certificate.certificateNumber}`;
+        const signedUrl = cloudinary.url(publicId, {
+            resource_type: "image", // We uploaded as image
+            sign_url: true,
+            secure: true
+        });
+
+        console.log("Fetching Signed URL:", signedUrl);
+
         // Fetch PDF from Cloudinary and stream it to the browser as a download
         const response = await axios({
             method: "get",
-            url: certificate.fileUrl,
+            url: signedUrl,
             responseType: "stream",
         });
 
@@ -267,7 +277,10 @@ exports.downloadCertificate = async (req, res, next) => {
         response.data.pipe(res);
     } catch (err) {
         console.error("Download Error:", err.message);
-        next(err);
+        res.status(err.response?.status || 500).json({
+            success: false,
+            message: err.message
+        });
     }
 };
 
@@ -284,10 +297,20 @@ exports.viewCertificate = async (req, res, next) => {
             return res.status(404).json({ success: false, message: "Certificate not found" });
         }
 
-        // Fetch PDF from Cloudinary and stream it directly to the browser (avoids CORS/Unsafe-Attempt errors)
+        // Generate a Signed URL to fetch even if the asset is restricted
+        const publicId = `certificates/${certificate.certificateNumber}`;
+        const signedUrl = cloudinary.url(publicId, {
+            resource_type: "image", // We uploaded as image
+            sign_url: true,
+            secure: true
+        });
+
+        console.log("Viewing Signed URL:", signedUrl);
+
+        // Fetch PDF from Cloudinary and stream it directly to the browser
         const response = await axios({
             method: "get",
-            url: certificate.fileUrl,
+            url: signedUrl,
             responseType: "stream",
         });
 
@@ -296,7 +319,10 @@ exports.viewCertificate = async (req, res, next) => {
 
         response.data.pipe(res);
     } catch (err) { 
-        console.log(err, "<-err");
-        next(err);
+        console.log("View Error:", err.message);
+        res.status(err.response?.status || 500).json({
+            success: false,
+            message: err.message
+        });
     }
 };
