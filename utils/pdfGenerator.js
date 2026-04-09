@@ -2,19 +2,14 @@ const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
 
-/**
- * Generates a styled PDF certificate and pipes it to a stream
- * @param {Object} data - Contains studentName, courseName, certificateNumber, issueDate, content, duration
- * @param {Stream|String} outputDest - Writable stream (e.g. res) or string file path
- * @returns {Promise<void>} 
- */
 const generateCertificate = (data, outputDest) => {
     return new Promise((resolve, reject) => {
         try {
-            // Create a document in Landscape mode
+            const width = 841.89;
+            const height = 595.28;
+
             const doc = new PDFDocument({
-                size: "A4",
-                layout: "landscape",
+                size: [width, height],
                 margin: 0,
             });
 
@@ -24,145 +19,101 @@ const generateCertificate = (data, outputDest) => {
                 if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
                 stream = fs.createWriteStream(outputDest);
             } else {
-                stream = outputDest; // Directly pass the Express `res` object
+                stream = outputDest;
             }
-            
+
             doc.pipe(stream);
 
-            const { studentName, courseName, certificateNumber, issueDate, content, duration } = data;
+            const { studentName, courseName, certificateNumber, issueDate, content } = data;
 
-            // ── Background & Borders ──────────────────────────────────────────────────
-            // Outer thick blue border
-            doc.rect(20, 20, doc.page.width - 40, doc.page.height - 40)
-                .lineWidth(8)
-                .stroke("#1c4587");
+            // Background
+            const bgPath = path.join(__dirname, "../certificate.png");
+            if (fs.existsSync(bgPath)) {
+                doc.image(bgPath, 0, 0, { width, height });
+            }
 
-            // Inner thin golden border
-            doc.rect(32, 32, doc.page.width - 64, doc.page.height - 64)
-                .lineWidth(2)
-                .stroke("#d4af37");
+            // Colors
+            const primaryColor = "#1c4587";
+            const secondaryColor = "#e69138";
+            const textColor = "#333333";
+            const labelColor = "#000000";
 
-            // ── Header / Logos (Text alternative for logos) ───────────────────────────
-            // Emulating the "BY8LABSAI" logo at the top center
-            doc.font("Helvetica-Bold")
-                .fontSize(32)
-                .fillColor("#e69138")
-                .text("<BY", 0, 60, { continued: true, align: "center" })
-                .fillColor("#1c4587")
-                .text("8LABSAI", { continued: true })
-                .fillColor("#e69138")
-                .text(">");
-                
-            doc.font("Helvetica")
-                .fontSize(12)
-                .fillColor("#1c4587")
-                .text("Private Limited", 0, 95, { align: "center" });
+            // ── HEADER (Top Left & Right) ──
+            const headerY = 70; // slightly top
+            const marginX = 25;
 
-            // Date of Issue (Top Left)
-            doc.font("Helvetica-Bold")
-                .fontSize(10)
-                .fillColor("#333333")
-                .text(`DATE OF ISSUE: ${issueDate}`, 50, 70);
+            // LEFT - Date
+            doc.font("Helvetica-Bold").fontSize(11).fillColor(labelColor);
+            doc.text(`Date of Issue: ${issueDate}`, marginX, headerY);
 
-            // Certificate ID (Top Right)
-            doc.font("Helvetica-Bold")
-                .fontSize(10)
-                .text(`CERTIFICATE ID : ${certificateNumber}`, doc.page.width - 250, 70, {
-                    width: 200,
-                    align: "right",
-                });
+            // RIGHT - Certificate ID
+            const idText = `Certificate ID: ${certificateNumber}`;
+            const idWidth = doc.widthOfString(idText);
 
-            // ── Main Titles ───────────────────────────────────────────────────────────
-            doc.moveDown(3);
-            doc.font("Times-Bold")
-                .fontSize(48)
-                .fillColor("#1c4587")
-                .text("CERTIFICATE", { align: "center" });
+            doc.text(idText, width - marginX - idWidth, headerY);
 
-            doc.moveDown(0.5);
-            doc.font("Times-Roman")
-                .fontSize(20)
-                .fillColor("#333333")
-                .text("OF EXCELLENCE", { align: "center" });
+            // ── CENTER CONTENT (Moved Up) ──
+            const centerX = 0;
+            const contentWidth = width;
 
-            doc.moveDown(1.5);
-            doc.font("Helvetica-Bold")
-                .fontSize(14)
-                .fillColor("#1c4587")
-                .text("THIS CERTIFICATE IS AWARDED TO", { align: "center" });
+            // CERTIFICATE (moved UP)
+            doc.font("Times-Bold").fontSize(48).fillColor(primaryColor);
+            doc.text("CERTIFICATE", centerX, 105, {
+                align: "center",
+                width: contentWidth,
+            });
 
-            // ── Student Name ──────────────────────────────────────────────────────────
-            doc.moveDown(1);
-            doc.font("Times-Bold")
-                .fontSize(36)
-                .fillColor("#000000")
-                .text(studentName.toUpperCase(), { align: "center" });
+            // OF EXCELLENCE
+            doc.font("Times-Bold").fontSize(20).fillColor(textColor);
+            doc.text("OF EXCELLENCE", centerX, 155, {
+                align: "center",
+                width: contentWidth,
+            });
 
-            // ── Course Description ────────────────────────────────────────────────────
-            doc.moveDown(1);
-            doc.font("Times-Roman")
-                .fontSize(16)
-                .fillColor("#333333")
-                .text("For successfully completing training on", { align: "center" });
+            // Award line
+            doc.font("Helvetica-Bold").fontSize(14).fillColor(primaryColor);
+            doc.text("THIS CERTIFICATE IS AWARDED TO", centerX, 190, {
+                align: "center",
+                width: contentWidth,
+            });
 
-            doc.moveDown(0.5);
-            doc.font("Times-Bold")
-                .fontSize(28)
-                .fillColor("#333333")
-                .text(courseName.toUpperCase(), { align: "center" });
+            // NAME (slightly up)
+            doc.font("Times-Bold").fontSize(46).fillColor(labelColor);
+            doc.text(studentName.toUpperCase(), centerX, 220, {
+                align: "center",
+                width: contentWidth,
+            });
 
-            // Dynamic content text
-            doc.moveDown(1);
-            doc.font("Times-Roman")
-                .fontSize(14)
-                .fillColor("#555555")
-                .text(content || `equipping him/her with the knowledge and skills required to master the same.`, {
+            // Sub text
+            doc.font("Helvetica").fontSize(14).fillColor(textColor);
+            doc.text("For successfully completing training on", centerX, 270, {
+                align: "center",
+                width: contentWidth,
+            });
+
+            // COURSE NAME (slightly up)
+            doc.font("Times-Bold").fontSize(34).fillColor(secondaryColor);
+            doc.text(courseName.toUpperCase(), centerX, 310, {
+                align: "center",
+                width: contentWidth,
+            });
+
+            // ✅ FIXED: Reduced gap + Increased font size
+            if (content && content.length > 5) {
+                doc.font("Times-Roman").fontSize(15).fillColor("#555555");
+                doc.text(content, 140, 355, {
                     align: "center",
                     width: 600,
-                    columns: 1,
-                }, doc.page.width / 2 - 300, doc.y);
-
-            // ── Signatures ────────────────────────────────────────────────────────────
-            const signatureY = doc.page.height - 120;
-
-            // Signature 1 (CEO)
-            doc.lineWidth(1)
-                .strokeColor("#000000")
-                .moveTo(100, signatureY)
-                .lineTo(250, signatureY)
-                .stroke();
-            doc.font("Helvetica-Bold")
-                .fontSize(12)
-                .fillColor("#333333")
-                .text("DINESH KUMAR", 100, signatureY + 10, { width: 150, align: "center" });
-            doc.font("Helvetica")
-                .fontSize(10)
-                .fillColor("#666666")
-                .text("CEO of By8labsAI", 100, signatureY + 25, { width: 150, align: "center" });
-
-            // Signature 2 (HR)
-            doc.lineWidth(1)
-                .strokeColor("#000000")
-                .moveTo(doc.page.width - 250, signatureY)
-                .lineTo(doc.page.width - 100, signatureY)
-                .stroke();
-            doc.font("Helvetica-Bold")
-                .fontSize(12)
-                .fillColor("#333333")
-                .text("NANCY", doc.page.width - 250, signatureY + 10, { width: 150, align: "center" });
-            doc.font("Helvetica")
-                .fontSize(10)
-                .fillColor("#666666")
-                .text("HR of By8labsAI", doc.page.width - 250, signatureY + 25, { width: 150, align: "center" });
+                    lineGap: 4, // tighter lines
+                });
+            }
 
             doc.end();
 
             if (typeof outputDest === "string") {
                 stream.on("finish", () => resolve(outputDest));
-                stream.on("error", (err) => reject(err));
+                stream.on("error", reject);
             } else {
-                // If piping directly to res, resolve immediately after generating
-                // The stream will handle the HTTP sending
                 resolve();
             }
         } catch (error) {

@@ -13,7 +13,16 @@ const app = express();
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors());
-app.use(express.json());
+
+// Stripe Webhook needs the raw body for signature verification.
+// We apply express.json() to everything EXCEPT the webhook route.
+app.use((req, res, next) => {
+    if (req.originalUrl === "/api/stripe/webhook") {
+        next();
+    } else {
+        express.json()(req, res, next);
+    }
+});
 // Serve the uploads directory statically so files can be accessed via URL
 app.use("/uploads", express.static("uploads"));
 

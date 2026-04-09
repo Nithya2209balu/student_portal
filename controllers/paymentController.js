@@ -211,6 +211,8 @@ exports.getPaymentHistory = async (req, res, next) => {
                 paymentId: payment._id,
                 date: tx.date,
                 method: tx.method,
+                paymentType: tx.paymentType || "MANUAL",
+                installmentNumber: tx.installmentNumber,
                 type: tx.type || "Installment",
                 receiptId: tx.receiptId || `REC-${Math.floor(1000 + Math.random() * 9000)}`,
                 status: tx.status || "success",
@@ -446,11 +448,25 @@ exports.downloadPayslip = async (req, res, next) => {
         doc.fillColor(primaryColor).fontSize(11).font("Helvetica-Bold").text("STUDENT DETAILS", 50, infoTop);
         doc.rect(50, infoTop + 15, 495, 1).fill("#EEEEEE");
 
+        // --- 🔹 DYNAMIC DATA HEALING FOR COURSE NAME ---
+        let courseName = payment.courseId?.title || payment.courseId?.name || "N/A";
+        if (courseName === "N/A") {
+            const user = await User.findById(payment.userId).select("courseName courseId");
+            if (user) {
+                courseName = user.courseName || "N/A";
+                if (courseName === "N/A" && user.courseId) {
+                    const Course = require("../models/Course");
+                    const foundCourse = await Course.findOne({ courseId: user.courseId });
+                    if (foundCourse) courseName = foundCourse.title || foundCourse.name;
+                }
+            }
+        }
+
         doc.fillColor(textColor).fontSize(10).font("Helvetica")
             .text("Name:", 50, infoTop + 30)
             .font("Helvetica-Bold").text(payment.userId.name, 150, infoTop + 30)
             .font("Helvetica").text("Course:", 50, infoTop + 45)
-            .font("Helvetica-Bold").text(payment.courseId?.title || "N/A", 150, infoTop + 45)
+            .font("Helvetica-Bold").text(courseName, 150, infoTop + 45)
             .font("Helvetica").text("Email:", 50, infoTop + 60)
             .font("Helvetica-Bold").text(payment.userId.email, 150, infoTop + 60);
 
@@ -480,17 +496,19 @@ exports.downloadPayslip = async (req, res, next) => {
         doc.fillColor(primaryColor).fontSize(9).font("Helvetica-Bold")
             .text("#", 60, historyTop + 24)
             .text("DATE", 90, historyTop + 24)
-            .text("TYPE", 200, historyTop + 24)
-            .text("METHOD", 350, historyTop + 24)
+            .text("TYPE", 180, historyTop + 24)
+            .text("METHOD", 280, historyTop + 24)
+            .text("PAY TYPE", 370, historyTop + 24)
             .text("AMOUNT", 450, historyTop + 24, { align: "right", width: 80 });
 
         let currentY = historyTop + 45;
         payment.transactions.forEach((tx, index) => {
             doc.fillColor(textColor).fontSize(9).font("Helvetica")
-                .text(index + 1, 60, currentY)
+                .text(tx.installmentNumber || index + 1, 60, currentY)
                 .text(new Date(tx.date).toLocaleDateString(), 90, currentY)
-                .text(tx.type || "Installment", 200, currentY)
-                .text(tx.method?.toUpperCase() || "N/A", 350, currentY)
+                .text(tx.type || "Installment", 180, currentY)
+                .text(tx.method?.toUpperCase() || "N/A", 280, currentY)
+                .text(tx.paymentType || "MANUAL", 370, currentY)
                 .font("Helvetica-Bold").text(`Rs. ${tx.amount.toLocaleString()}`, 450, currentY, { align: "right", width: 80 });
             
             doc.rect(50, currentY + 12, 495, 0.5).fill("#EEEEEE");
@@ -553,60 +571,79 @@ exports.addManualPayment = async (req, res, next) => {
             }
         }
 
-        let payment = await Payment.findOne({ userId });
+        // 1. Find existing payment record
+        // Try exact match with normalized course ID first
+        let payment = await Payment.findOne({ userId, courseId: normalizedCourseId });
+        
+        // If not found, fall back to any existing payment record for this user 
+        // (to unify records even if course IDs differ slightly)
+        if (!payment) {
+             payment = await Payment.findOne({ userId }).sort({ createdAt: -1 });
+        }
 
         if (!payment) {
-            // First payment: Fetch course details for fees
+            // --- NEW PAYMENT RECORD ---
             let courseAmount = 0;
             if (normalizedCourseId && mongoose.Types.ObjectId.isValid(normalizedCourseId)) {
                 const course = await Course.findById(normalizedCourseId);
                 if (course) courseAmount = course.amount;
             }
 
-            // Next Installment Date: Default to 30 days from now
             const nextInstallment = new Date();
             nextInstallment.setDate(nextInstallment.getDate() + 30);
 
-            // Duration logic: 90 days
             const duration = 90;
             const endDate = new Date();
             endDate.setDate(endDate.getDate() + duration);
 
             payment = new Payment({
                 userId,
-                courseId: courseId || undefined,
-                totalFees: courseAmount,
+                courseId: normalizedCourseId || courseId, // Prefer normalized
+                totalFees: courseAmount || totalFees,
                 paidAmount: numAmount,
-                remainingAmount: Math.max(0, courseAmount - numAmount),
+                remainingAmount: Math.max(0, (courseAmount || totalFees) - numAmount),
                 durationInDays: duration,
                 endDate,
                 nextInstallmentDate: nextInstallment,
                 transactions: [{
                     amount: numAmount,
                     method,
+                    paymentType: "MANUAL",
+                    installmentNumber: 1,
                     collectedBy,
                     type: type || "Admission Fee",
                     receiptId,
-                    status: "success"
+                    status: "success",
+                    date: new Date()
                 }],
             });
         } else {
-            // Subsequent payment
+            // --- UPDATING EXISTING RECORD ---
             payment.paidAmount += numAmount;
             payment.remainingAmount = Math.max(0, payment.totalFees - payment.paidAmount);
 
-            // Update next installment date (+30 days from previous)
             const nextInstallment = new Date();
             nextInstallment.setDate(nextInstallment.getDate() + 30);
             payment.nextInstallmentDate = nextInstallment;
 
+            // Determine installment number globally for the user
+            const allUserPayments = await Payment.find({ userId });
+            let totalTransactionsCount = 0;
+            allUserPayments.forEach(p => {
+                totalTransactionsCount += (p.transactions ? p.transactions.length : 0);
+            });
+            const globalInstallmentNumber = totalTransactionsCount + 1;
+
             payment.transactions.push({
                 amount: numAmount,
                 method,
+                paymentType: "MANUAL",
+                installmentNumber: globalInstallmentNumber,
                 collectedBy,
-                type: type || `Installment ${payment.transactions.length}`,
+                type: type || `Installment ${globalInstallmentNumber}`,
                 receiptId,
-                status: "success"
+                status: "success",
+                date: new Date()
             });
         }
 
@@ -620,6 +657,7 @@ exports.addManualPayment = async (req, res, next) => {
         await payment.save();
         res.json({ success: true, message: "Payment added successfully", data: payment });
     } catch (err) {
+        console.error("Error in addManualPayment:", err.message);
         if (err.name === 'ValidationError') {
             return res.status(400).json({ success: false, message: err.message });
         }

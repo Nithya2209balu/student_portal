@@ -21,6 +21,10 @@ const paymentSchema = new mongoose.Schema(
                 amount: { type: Number, required: true },
                 date: { type: Date, default: Date.now },
                 method: { type: String, enum: ["cash", "upi", "card", "online"], default: "cash" },
+                paymentType: { type: String, enum: ["MANUAL", "ONLINE"], default: "MANUAL" },
+                installmentNumber: { type: Number },
+                sessionId: { type: String },
+                paymentIntentId: { type: String },
                 type: { type: String, default: "Installment" }, // e.g. "Admission Fee", "Installment 1"
                 receiptId: { type: String }, // e.g. "REC-9921"
                 status: { type: String, default: "success" },
