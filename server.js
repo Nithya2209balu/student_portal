@@ -43,6 +43,8 @@ app.use("/api/users", require("./routes/users"));
 app.use("/api/documents", require("./routes/documentRoutes"));
 app.use("/api/stripe", require("./routes/stripeRoutes"));
 app.use("/api/certificates", require("./routes/certificateRoutes"));
+app.use("/api/admissions", require("./routes/admissions"));
+
 
 // ── Health Check ──────────────────────────────────────────────────────────────
 app.get("/", (req, res) => {
